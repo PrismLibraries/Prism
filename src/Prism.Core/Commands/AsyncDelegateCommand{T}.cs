@@ -25,7 +25,7 @@ public class AsyncDelegateCommand<T> : DelegateCommandBase, IAsyncCommand
     /// </summary>
     /// <param name="executeMethod">The <see cref="Func{T, Task}"/> to invoke when <see cref="ICommand.Execute(object)"/> is called.</param>
     public AsyncDelegateCommand(Func<T, Task> executeMethod)
-#if NET6_0_OR_GREATER
+#if NET8_0_OR_GREATER
         : this((p,t) => executeMethod(p).WaitAsync(t), _ => true)
 #else
         : this((p, t) => executeMethod(p), _ => true)
@@ -51,7 +51,7 @@ public class AsyncDelegateCommand<T> : DelegateCommandBase, IAsyncCommand
     /// <param name="executeMethod">The <see cref="Func{T, Task}"/> to invoke when <see cref="ICommand.Execute"/> is called.</param>
     /// <param name="canExecuteMethod">The delegate to invoke when <see cref="ICommand.CanExecute"/> is called</param>
     public AsyncDelegateCommand(Func<T, Task> executeMethod, Func<T, bool> canExecuteMethod)
-#if NET6_0_OR_GREATER
+#if NET8_0_OR_GREATER
         : this((p, c) => executeMethod(p).WaitAsync(c), canExecuteMethod)
 #else
         : this((p, c) => executeMethod(p), canExecuteMethod)

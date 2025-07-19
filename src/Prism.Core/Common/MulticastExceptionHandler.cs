@@ -82,7 +82,7 @@ public readonly struct MulticastExceptionHandler
         {
             await task;
         }
-#if NET6_0_OR_GREATER
+#if NET8_0_OR_GREATER
         else if (result is ValueTask valueTask)
         {
             await valueTask;
