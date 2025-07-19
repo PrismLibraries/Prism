@@ -29,7 +29,7 @@ jobs:
     with:
       name: Build Prism.Core
       solution-path: PrismLibrary_Core.slnf
-      code-sign: true
+      # code-sign: true
       artifact-name: Core
     secrets:
       codeSignKeyVault: ${{ secrets.CodeSignKeyVault }}
@@ -43,7 +43,7 @@ jobs:
     with:
       name: Build Prism.Wpf
       solution-path: PrismLibrary_Wpf.slnf
-      code-sign: true
+      # code-sign: true
       artifact-name: Wpf
     secrets:
       codeSignKeyVault: ${{ secrets.CodeSignKeyVault }}
@@ -64,7 +64,7 @@ jobs:
       uno-check-version: 1.24.0
       uno-check-parameters: '--skip xcode --skip gtk3 --skip vswin --skip androidemulator --skip androidsdk --skip vsmac --skip dotnetnewunotemplates'
       run-tests: false
-      code-sign: true
+      # code-sign: true
       artifact-name: Uno
     secrets:
       codeSignKeyVault: ${{ secrets.CodeSignKeyVault }}
@@ -79,7 +79,7 @@ jobs:
       name: Build Prism.Maui
       solution-path: PrismLibrary_Maui.slnf
       install-workload: maui maui-tizen
-      code-sign: true
+      # code-sign: true
       artifact-name: Maui
     secrets:
       codeSignKeyVault: ${{ secrets.CodeSignKeyVault }}
@@ -93,7 +93,7 @@ jobs:
     with:
       name: Build Prism.Avalonia
       solution-path: PrismLibrary_Avalonia.slnf
-      code-sign: true
+      # code-sign: true
       artifact-name: Avalonia
     secrets:
       codeSignKeyVault: ${{ secrets.CodeSignKeyVault }}
