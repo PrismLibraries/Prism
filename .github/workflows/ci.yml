@@ -58,7 +58,7 @@ jobs:
       name: Build Prism.Uno
       solution-path: PrismLibrary_Uno.slnf
       windows-sdk-version: 18362
-      dotnet-version: 8.0.300
+      dotnet-version: 9.0.302
       install-workload: ios android macos maccatalyst wasm-tools
       uno-check: false
       uno-check-version: 1.24.0
@@ -79,6 +79,7 @@ jobs:
       name: Build Prism.Maui
       solution-path: PrismLibrary_Maui.slnf
       install-workload: maui maui-tizen
+      dotnet-version: 9.0.302
       # code-sign: true
       artifact-name: Maui
     secrets:
@@ -93,6 +94,7 @@ jobs:
     with:
       name: Build Prism.Avalonia
       solution-path: PrismLibrary_Avalonia.slnf
+      dotnet-version: 9.0.302
       # code-sign: true
       artifact-name: Avalonia
     secrets:
