@@ -32,3 +32,7 @@ jobs:
       uno-check-version: 1.25.1
       uno-check-parameters: '--skip xcode --skip gtk3 --skip vswin --skip androidemulator --skip androidsdk --skip vsmac --skip dotnetnewunotemplates'
       run-tests: false
+      nugetFeedUrl: 'https://apinhousefeed.azurewebsites.net/v3/index.json'
+    secrets:
+      nugetUserName: ${{ secrets.IN_HOUSE_USER }}
+      nugetToken: ${{ secrets.IN_HOUSE_API_KEY }}

@@ -23,3 +23,7 @@ jobs:
     with:
       name: Build Prism.Wpf
       solution-path: PrismLibrary_Wpf.slnf
+      nugetFeedUrl: 'https://apinhousefeed.azurewebsites.net/v3/index.json'
+    secrets:
+      nugetUserName: ${{ secrets.IN_HOUSE_USER }}
+      nugetToken: ${{ secrets.IN_HOUSE_API_KEY }}

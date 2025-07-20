@@ -24,3 +24,7 @@ jobs:
       name: Build Prism.Avalonia
       solution-path: PrismLibrary_Avalonia.slnf
       dotnet-version: 9.0.302
+      nugetFeedUrl: 'https://apinhousefeed.azurewebsites.net/v3/index.json'
+    secrets:
+      nugetUserName: ${{ secrets.IN_HOUSE_USER }}
+      nugetToken: ${{ secrets.IN_HOUSE_API_KEY }}
