@@ -21,12 +21,14 @@ on:
 
 jobs:
   build-prism-uno:
-    uses: avantipoint/workflow-templates/.github/workflows/msbuild-build.yml@master
+    uses: avantipoint/workflow-templates/.github/workflows/msbuild-build.yml@v1
     with:
       name: Build Prism.Uno
       solution-path: PrismLibrary_Uno.slnf
-      dotnet-version: 7.0.400
       windows-sdk-version: 18362
-      uno-check: true
-      uno-check-parameters: '--skip xcode --skip gtk3 --skip vswin --skip vsmac'
+      dotnet-version: 10.0.100
+      install-workload: ios android macos maccatalyst wasm-tools tvos
+      uno-check: false
+      uno-check-version: 1.33.1
+      uno-check-parameters: '--skip xcode --skip gtk3 --skip vswin --skip androidemulator --skip androidsdk --skip vsmac --skip dotnetnewunotemplates'
       run-tests: false

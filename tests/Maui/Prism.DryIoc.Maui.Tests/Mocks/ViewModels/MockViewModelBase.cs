@@ -1,8 +1,9 @@
-﻿using Prism.Common;
+using Prism.Common;
 
 namespace Prism.DryIoc.Maui.Tests.Mocks.ViewModels;
 
-public abstract class MockViewModelBase : IActiveAware, IConfirmNavigation
+#pragma warning disable CS0067 // The event is never used because this is a Mock
+public abstract class MockViewModelBase : IActiveAware, INavigationAware, IConfirmNavigation
 {
     private readonly IPageAccessor _pageAccessor;
 
@@ -13,6 +14,11 @@ public abstract class MockViewModelBase : IActiveAware, IConfirmNavigation
         _pageAccessor = pageAccessor;
         NavigationService = navigationService;
     }
+
+    public string Message { get; private set; }
+
+    private List<string> _actions = [];
+    public IEnumerable<string> Actions => _actions;
 
     public INavigationService NavigationService { get; }
 
@@ -26,6 +32,22 @@ public abstract class MockViewModelBase : IActiveAware, IConfirmNavigation
 
     public bool IsActive { get; set; }
 
-    public bool CanNavigate(INavigationParameters parameters) =>
-        !StopNavigation;
+    public bool CanNavigate(INavigationParameters parameters)
+    {
+        _actions.Add(nameof(CanNavigate));
+        return !StopNavigation;
+    }
+
+    public void OnNavigatedFrom(INavigationParameters parameters)
+    {
+        _actions.Add(nameof(OnNavigatedFrom));
+    }
+
+    public void OnNavigatedTo(INavigationParameters parameters)
+    {
+        _actions.Add(nameof(OnNavigatedTo));
+        if (parameters.TryGetValue<string>("Message", out var message))
+            Message = message;
+    }
 }
+#pragma warning restore CS0067 // The event is never used because this is a Mock

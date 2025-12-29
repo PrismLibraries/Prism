@@ -1,9 +1,9 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 
 namespace MauiModule.ViewModels;
 
-public abstract class ViewModelBase : BindableBase, IInitialize, INavigatedAware, IPageLifecycleAware
+public abstract class ViewModelBase : BindableBase, IInitialize, INavigatedAware, IPageLifecycleAware, IConfirmNavigation
 {
     protected INavigationService _navigationService { get; }
     protected IPageDialogService _pageDialogs { get; }
@@ -29,6 +29,7 @@ public abstract class ViewModelBase : BindableBase, IInitialize, INavigatedAware
         SelectedDialog = AvailableDialogs.FirstOrDefault();
         ShowDialog = new DelegateCommand(OnShowDialogCommand, () => !string.IsNullOrEmpty(SelectedDialog))
             .ObservesProperty(() => SelectedDialog);
+        GoBack = new DelegateCommand<string>(OnGoToBack);
     }
 
     public IEnumerable<string> AvailableDialogs { get; }
@@ -52,6 +53,8 @@ public abstract class ViewModelBase : BindableBase, IInitialize, INavigatedAware
 
     public DelegateCommand ShowDialog { get; }
 
+    public DelegateCommand<string> GoBack { get; }
+
     private void OnNavigateCommandExecuted(string uri)
     {
         Messages.Add($"OnNavigateCommandExecuted: {uri}");
@@ -74,6 +77,12 @@ public abstract class ViewModelBase : BindableBase, IInitialize, INavigatedAware
     private void DialogCallback(IDialogResult result) =>
         Messages.Add("Dialog Closed");
 
+    private void OnGoToBack(string viewName)
+    {
+        Messages.Add($"On Go Back {viewName}");
+        _navigationService.GoBackToAsync(viewName);
+    }
+
     public void Initialize(INavigationParameters parameters)
     {
         Messages.Add("ViewModel Initialized");
@@ -81,7 +90,7 @@ public abstract class ViewModelBase : BindableBase, IInitialize, INavigatedAware
             Messages.Add(parameter.Value.ToString());
     }
 
-    public void OnNavigatedFrom(INavigationParameters parameters)
+    public virtual void OnNavigatedFrom(INavigationParameters parameters)
     {
         Messages.Add("ViewModel NavigatedFrom");
     }
@@ -99,5 +108,11 @@ public abstract class ViewModelBase : BindableBase, IInitialize, INavigatedAware
     public void OnDisappearing()
     {
         Messages.Add("View Disappearing");
+    }
+
+    public virtual bool CanNavigate(INavigationParameters parameters)
+    {
+        Messages.Add("Can Navigate");
+        return true;
     }
 }

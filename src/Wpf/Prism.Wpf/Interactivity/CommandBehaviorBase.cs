@@ -1,12 +1,6 @@
-using System;
 using System.Windows.Input;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-#else
-using System.Windows;
-using System.Windows.Controls;
+#if AVALONIA
+using Avalonia.Controls;
 #endif
 
 namespace Prism.Interactivity
@@ -18,7 +12,11 @@ namespace Prism.Interactivity
     /// <remarks>
     /// CommandBehaviorBase can be used to provide new behaviors for commands.
     /// </remarks>
+#if !AVALONIA
     public class CommandBehaviorBase<T> where T : UIElement
+#else
+    public class CommandBehaviorBase<T> where T : Control
+#endif
     {
         private ICommand _command;
         private object _commandParameter;
@@ -100,7 +98,6 @@ namespace Prism.Interactivity
             }
         }
 
-
         /// <summary>
         /// Updates the target object's IsEnabled property based on the commands ability to execute.
         /// </summary>
@@ -113,7 +110,7 @@ namespace Prism.Interactivity
             }
             else if (Command != null)
             {
-#if HAS_WINUI
+#if UNO_WINUI
                 if (AutoEnable && TargetObject is Control control)
                     control.IsEnabled = Command.CanExecute(CommandParameter);
 #else

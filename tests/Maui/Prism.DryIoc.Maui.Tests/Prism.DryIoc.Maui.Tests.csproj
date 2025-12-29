@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
@@ -9,8 +9,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Maui.Controls.Compatibility" />
-    <PackageReference Include="Microsoft.Maui.Controls" />
+    <PackageReference Include="Microsoft.Maui.Controls" VersionOverride="10.0.10" />
     <PackageReference Include="GitHubActionsTestLogger">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -29,6 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Maui\Prism.DryIoc.Maui\Prism.DryIoc.Maui.csproj" />
+    <ProjectReference Include="..\..\..\src\Maui\Prism.Maui.Rx\Prism.Maui.Rx.csproj" />
   </ItemGroup>
 
 </Project>

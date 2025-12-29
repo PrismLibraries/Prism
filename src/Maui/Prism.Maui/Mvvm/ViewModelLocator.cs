@@ -20,13 +20,15 @@ public static class ViewModelLocator
             null,
             propertyChanged: OnViewModelPropertyChanged);
 
-    internal static readonly BindableProperty NavigationNameProperty =
-        BindableProperty.CreateAttached("NavigationName", typeof(string), typeof(ViewModelLocator), null);
+    public static readonly BindableProperty NavigationNameProperty =
+        BindableProperty.CreateAttached("NavigationName", typeof(string), typeof(ViewModelLocator), null, defaultValueCreator: CreateDefaultNavigationName);
 
-    internal static string GetNavigationName(BindableObject bindable) =>
+    private static object CreateDefaultNavigationName(BindableObject bindable) => bindable.GetType().Name;
+
+    public static string GetNavigationName(BindableObject bindable) =>
         (string)bindable.GetValue(NavigationNameProperty);
 
-    internal static void SetNavigationName(BindableObject bindable, string name) =>
+    public static void SetNavigationName(BindableObject bindable, string name) =>
         bindable.SetValue(NavigationNameProperty, name);
 
     /// <summary>
@@ -101,9 +103,11 @@ public static class ViewModelLocator
         if (view is Element element &&
             ((ViewModelLocatorBehavior)element.GetValue(AutowireViewModelProperty) == ViewModelLocatorBehavior.Disabled
             || (element.BindingContext is not null && element.BindingContext != element.Parent)))
+        {
             return;
+        }
 
-        else if(view is TabbedPage tabbed)
+        if (view is TabbedPage tabbed)
         {
             foreach (var child in tabbed.Children)
                 Autowire(child);
@@ -121,7 +125,9 @@ public static class ViewModelLocator
         ViewModelLocationProvider.AutoWireViewModelChanged(view, Bind);
 
         if (view is BindableObject bindable && bindable.BindingContext is null)
+        {
             bindable.BindingContext = new object();
+        }
     }
 
     /// <summary>
@@ -132,6 +138,8 @@ public static class ViewModelLocator
     private static void Bind(object view, object viewModel)
     {
         if (view is BindableObject element)
+        {
             element.BindingContext = viewModel;
+        }
     }
 }

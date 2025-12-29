@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Maui.LifecycleEvents;
 using Prism.AppModel;
 using Prism.Behaviors;
@@ -16,23 +17,26 @@ using TabbedPage = Microsoft.Maui.Controls.TabbedPage;
 
 namespace Prism;
 
+/// <summary>
+/// A builder for Prism with .NET MAUI cross-platform applications and services.
+/// </summary>
 public sealed class PrismAppBuilder
 {
-    private List<Action<IContainerRegistry>> _registrations { get; }
-    private List<Action<IContainerProvider>> _initializations { get; }
-    private IContainerProvider _container { get; }
-    private Func<IContainerProvider, INavigationService, Task> _onAppStarted;
+    private readonly List<Action<IContainerRegistry>> _registrations;
+    private readonly List<Action<IContainerProvider>> _initializations;
+    private readonly IContainerProvider _container;
+    private Func<IContainerProvider, INavigationService, Task> _createWindow;
     private Action<RegionAdapterMappings> _configureAdapters;
     private Action<IRegionBehaviorFactory> _configureBehaviors;
 
     internal PrismAppBuilder(IContainerExtension containerExtension, MauiAppBuilder builder)
     {
-        if (containerExtension is null)
-            throw new ArgumentNullException(nameof(containerExtension));
+        ArgumentNullException.ThrowIfNull(containerExtension);
+        ArgumentNullException.ThrowIfNull(builder);
 
         _container = containerExtension;
-        _registrations = new List<Action<IContainerRegistry>>();
-        _initializations = new List<Action<IContainerProvider>>();
+        _registrations = [];
+        _initializations = [];
 
         ViewModelCreationException.SetViewNameDelegate(view =>
         {
@@ -42,6 +46,9 @@ public sealed class PrismAppBuilder
             return $"View is not a BindableObject: '{view.GetType().FullName}";
         });
 
+        // Ensure that the DialogStack is cleared when the Application is started.
+        // This is primarily to help with Unit Tests
+        IDialogContainer.DialogStack.Clear();
         MauiBuilder = builder;
         MauiBuilder.ConfigureContainer(new PrismServiceProviderFactory(RegistrationCallback));
         MauiBuilder.ConfigureLifecycleEvents(lifecycle =>
@@ -51,23 +58,40 @@ public sealed class PrismAppBuilder
             {
                 android.OnBackPressed(activity =>
                 {
+                    //the PrismWindow and PrismNavigationPage have their own back press logic and intercepts the hardware back button behavior
+                    //when this happens the PageNavigationService will take over and handle the navigation and decides whether to allow GoBack or not
+                    //this means we need to check if the PageNavigationService is handling the navigation and if it is, we need to prevent the OnBackPressed logic
+                    if (PageNavigationService.NavigationSource == PageNavigationSource.NavigationService)
+                        return true; 
+
                     var root = ContainerLocator.Container;
                     if (root is null)
                         return false;
 
                     var app = root.Resolve<IApplication>();
-                    var windows = app.Windows.OfType<PrismWindow>();
-                    if (!windows.Any(x => x.IsActive))
+                    var window = app.Windows.OfType<PrismWindow>()
+                        .FirstOrDefault(x => x.IsActive);
+
+                    if (window is null)
                         return false;
 
-                    var window = windows.First(x => x.IsActive);
-                    if(window.IsRootPage && app is Application application)
+                    //we are on the root page and the user pressed the hardward back button. the app has nowhere to navigation except to the background.
+                    //neither the PrismNavigationPage or the PrismWindow can handle this scenario, so we need to handle it here
+                    if (window.IsRootPage)
                     {
-                        application.Quit();
-                        return false;
-                    }
+                        //when showing a dialog on the root page, if the user presses the hardware back button, we need to make sure the dialog
+                        //decides either to dismiss the dialog or keep it open
+                        var dialogModal = IDialogContainer.DialogStack.LastOrDefault();
+                        if (dialogModal is not null)
+                        {
+                            return true;
+                        }
 
-                    window.OnSystemBack();
+                        //note: if the PageNavigationService sends the android app to the background, this can cause the CanNavigate to be called twice.
+                        //if this becomes a problem, we may need to add an additional static flag to know when we are sending the app to the background to prevent the double call
+                        var canNavigate = MvvmHelpers.CanNavigate(MvvmHelpers.GetTarget(window.Page), new NavigationParameters());
+                        return !canNavigate;                        
+                    }
 
                     return true;
                 });
@@ -89,7 +113,7 @@ public sealed class PrismAppBuilder
     /// </summary>
     public MauiAppBuilder MauiBuilder { get; }
 
-    private void ConfigureViewModelLocator()
+    private static void ConfigureViewModelLocator()
     {
         ViewModelLocationProvider.SetDefaultViewToViewModelTypeResolver(view =>
         {
@@ -106,7 +130,7 @@ public sealed class PrismAppBuilder
     {
         try
         {
-            if (view is not BindableObject bindable)
+            if (view is not BindableObject bindable || bindable.BindingContext is not null)
                 return null;
 
             if (ViewModelLocator.GetAutowireViewModel(bindable) == ViewModelLocatorBehavior.ForceLoaded)
@@ -154,12 +178,49 @@ public sealed class PrismAppBuilder
             return;
 
         _initialized = true;
-        _initializations.ForEach(action => action(_container));
+        var logger = _container.Resolve<ILogger<PrismAppBuilder>>();
+        var errors = new List<Exception>();
+
+        _initializations.ForEach(action =>
+        {
+            try
+            {
+                action(_container);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error executing Initialization Delegate.");
+                errors.Add(ex);
+            }
+        });
+
+        if (errors.Count == 1)
+        {
+            throw new PrismInitializationException("An error was encountered while invoking the OnInitialized Delegates", errors[0]);
+        }
+        else if (errors.Count > 1)
+        {
+            throw new AggregateException("One or more errors were encountered while executing the OnInitialized Delegates", [.. errors]);
+        }
 
         if (_container.IsRegistered<IModuleCatalog>() && _container.Resolve<IModuleCatalog>().Modules.Any())
         {
-            var manager = _container.Resolve<IModuleManager>();
-            manager.Run();
+            try
+            {
+                logger.LogDebug("Initializing modules.");
+                var manager = _container.Resolve<IModuleManager>();
+                manager.Run();
+                logger.LogDebug("Modules Initialized.");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "An error ocurred while initializing the Modules.");
+                throw new PrismInitializationException("An error occurred while initializing the Modules.", ex);
+            }
+        }
+        else
+        {
+            logger.LogDebug("No Modules found to initialize.");
         }
 
         var navRegistry = _container.Resolve<INavigationRegistry>();
@@ -183,14 +244,14 @@ public sealed class PrismAppBuilder
         }
     }
 
-    internal void OnAppStarted()
+    internal void OnCreateWindow()
     {
-        if (_onAppStarted is null)
-            throw new ArgumentException("You must call OnAppStart on the PrismAppBuilder.");
+        if (_createWindow is null)
+            throw new ArgumentException("You must call CreateWindow on the PrismAppBuilder.");
 
         // Ensure that this is executed before we navigate.
         OnInitialized();
-        var onStart = _onAppStarted(_container, _container.Resolve<INavigationService>());
+        var onStart = _createWindow(_container, _container.Resolve<INavigationService>());
         onStart.Wait();
     }
 
@@ -198,11 +259,11 @@ public sealed class PrismAppBuilder
     /// When the <see cref="Application"/> is started and the native platform calls <see cref="IApplication.CreateWindow(IActivationState?)"/>
     /// this delegate will be invoked to do your initial Navigation.
     /// </summary>
-    /// <param name="onAppStarted">The Navigation Delegate.</param>
+    /// <param name="createWindow">The Navigation Delegate.</param>
     /// <returns>The <see cref="PrismAppBuilder"/>.</returns>
-    public PrismAppBuilder OnAppStart(Func<IContainerProvider, INavigationService, Task> onAppStarted)
+    public PrismAppBuilder CreateWindow(Func<IContainerProvider, INavigationService, Task> createWindow)
     {
-        _onAppStarted = onAppStarted;
+        _createWindow = createWindow;
         return this;
     }
 
@@ -256,7 +317,7 @@ public sealed class PrismAppBuilder
     {
         containerRegistry.TryRegisterSingleton<IEventAggregator, EventAggregator>();
         containerRegistry.TryRegisterSingleton<IKeyboardMapper, KeyboardMapper>();
-        containerRegistry.TryRegisterScoped<IPageDialogService, PageDialogService>();
+        containerRegistry.TryRegisterSingleton<IPageDialogService, PageDialogService>();
         containerRegistry.TryRegisterScoped<IDialogService, DialogService>();
         containerRegistry.TryRegister<IDialogViewRegistry, DialogViewRegistry>();
         containerRegistry.RegisterDialogContainer<DialogContainerPage>();
@@ -267,6 +328,7 @@ public sealed class PrismAppBuilder
         containerRegistry.RegisterManySingleton<PrismWindowManager>();
         containerRegistry.RegisterPageBehavior<NavigationPage, NavigationPageSystemGoBackBehavior>();
         containerRegistry.RegisterPageBehavior<NavigationPage, NavigationPageActiveAwareBehavior>();
+        containerRegistry.RegisterPageBehavior<NavigationPage, NavigationPageTabbedParentBehavior>();
         containerRegistry.RegisterPageBehavior<TabbedPage, TabbedPageActiveAwareBehavior>();
         containerRegistry.RegisterPageBehavior<TabbedPage, ManualTabbedPageBehavior>();
         containerRegistry.RegisterPageBehavior<PageLifeCycleAwareBehavior>();

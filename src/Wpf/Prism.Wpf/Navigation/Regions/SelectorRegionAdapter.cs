@@ -1,11 +1,4 @@
 using Prism.Navigation.Regions.Behaviors;
-using System;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml.Controls.Primitives;
-#else
-using System.Windows.Controls.Primitives;
-#endif
 
 namespace Prism.Navigation.Regions
 {

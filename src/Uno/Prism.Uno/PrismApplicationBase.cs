@@ -1,6 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.UI.Xaml;
 using Prism.Common;
 using Prism.Modularity;
 using Prism.Mvvm;
@@ -126,7 +125,6 @@ namespace Prism
             _containerExtension.RegisterInstance(builder.Window);
             RegisterRequiredTypes(_containerExtension);
             RegisterTypes(_containerExtension);
-            _containerExtension.FinalizeExtension();
 
             ConfigureModuleCatalog(Container.Resolve<IModuleCatalog>());
 

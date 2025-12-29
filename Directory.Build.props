@@ -17,6 +17,14 @@
     <PrismPackageIcon>$(MSBuildThisFileDirectory)images/prism-logo.png</PrismPackageIcon>
     <PrismLicenseFile>$(MSBuildThisFileDirectory)LICENSE</PrismLicenseFile>
     <LangVersion>latest</LangVersion>
+    <PolySharpIncludeGeneratedTypes>
+      System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembersAttribute;
+      System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes;
+      System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute;
+      System.Runtime.CompilerServices.IsExternalInit;
+    </PolySharpIncludeGeneratedTypes>
+    <WarningsAsErrors>$(WarningsAsErrors);IDE0003</WarningsAsErrors>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -29,6 +37,7 @@
     <IsUnoProject>$(MSBuildProjectName.Contains('Uno'))</IsUnoProject>
     <IsFormsProject>$(MSBuildProjectName.Contains('Forms'))</IsFormsProject>
     <IsMauiProject>$(MSBuildProjectName.Contains('Maui'))</IsMauiProject>
+    <IsAvaloniaProject>$(MSBuildProjectName.Contains('Avalonia'))</IsAvaloniaProject>
     <SignAssembly Condition=" ('$(IsCoreProject)' Or '$(IsWpfProject)') ">True</SignAssembly>
     <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)prism.snk</AssemblyOriginatorKeyFile>
     <DelaySign>False</DelaySign>
@@ -41,6 +50,7 @@
     <PackageTags Condition=" '$(IsWpfProject)' == 'True' ">prism;mvvm;wpf;dependency injection;di</PackageTags>
     <PackageTags Condition=" '$(IsUnoProject)' == 'True' ">prism;mvvm;winui;uno-platform;xamarin;webassembly;android;ios;macos;dependency injection;di</PackageTags>
     <PackageTags Condition=" '$(IsFormsProject)' == 'True' ">prism;mvvm;uwp;android;ios;xamarin;xamarin.forms;dependency injection;di</PackageTags>
+    <PackageTags Condition=" '$(IsAvaloniaProject)' == 'True' ">prism;mvvm;axaml;xaml;desktop;navigation;prismavalonia;dialog;linux;macos;avalonia;dependency injection;di</PackageTags>
     <IS_PREVIEW Condition=" '$(IS_PREVIEW)' == '' ">false</IS_PREVIEW>
     <IS_RELEASE Condition=" '$(IS_RELEASE)' == '' ">false</IS_RELEASE>
     <UseWpf>$(IsWpfProject)</UseWpf>
@@ -48,13 +58,54 @@
     <MSBuildSdkExtrasVersion>3.0.44</MSBuildSdkExtrasVersion>
   </PropertyGroup>
 
-  <PropertyGroup Condition="$(IsUnoProject)">
-    <DefineConstants>$(DefineConstants);UNO_WINUI_PROJECT</DefineConstants>
-  </PropertyGroup>
+  <!--
+    -->
+  <Choose>
+    <When Condition="$(IsWpfProject)">
+      <PropertyGroup>
+        <DefineConstants>$(DefineConstants);WPF</DefineConstants>
+      </PropertyGroup>
+      <ItemGroup>
+        <Using Include="System.Windows" />
+        <Using Include="System.Windows.Controls" />
+        <Using Include="System.Windows.Controls.Primitives" />
+        <Using Include="System.Windows.Data" />
+      </ItemGroup>
+    </When>
+    <When Condition="$(IsUnoProject)">
+      <PropertyGroup>
+        <DefineConstants>$(DefineConstants);UNO_WINUI</DefineConstants>
+        <DefineConstants Condition="!$(TargetFramework.Contains('-')) OR $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'browser'">$(DefineConstants);UNO_WASM</DefineConstants>
+      </PropertyGroup>
+      <ItemGroup>
+        <Using Include="Microsoft.UI.Xaml" />
+        <Using Include="Microsoft.UI.Xaml.Controls" />
+        <Using Include="Microsoft.UI.Xaml.Controls.Primitives" />
+        <Using Include="Microsoft.UI.Xaml.Data" />
+        <Using Include="Microsoft.UI.Xaml.Media" />
+      </ItemGroup>
+    </When>
+    <When Condition="$(IsAvaloniaProject)">
+      <PropertyGroup>
+        <DefineConstants>$(DefineConstants);AVALONIA</DefineConstants>
+      </PropertyGroup>
+      <ItemGroup>
+        <Using Include="Avalonia" />
+        <Using Include="Avalonia.Controls" />
+        <Using Include="Avalonia.Controls.ApplicationLifetimes" />
+        <Using Include="Avalonia.Controls.Primitives" />
+        <Using Include="Avalonia.Interactivity" />
+        <Using Include="Avalonia.Markup.Xaml" />
+        <Using Include="Avalonia.Controls.Control" Alias="FrameworkElement" />
+        <Using Include="Avalonia.AvaloniaObject" Alias="DependencyObject" />
+        <Using Include="Avalonia.AvaloniaPropertyChangedEventArgs" Alias="DependencyPropertyChangedEventArgs" />
+      </ItemGroup>
+    </When>
+  </Choose>
 
   <!-- Versioning -->
   <PropertyGroup>
-    <PackageReleaseNotes>https://github.com/PrismLibrary/Prism/releases/tag/v$(Version)</PackageReleaseNotes>
+    <PackageReleaseNotes Condition="$(OfficialRelease) == 'true'">https://github.com/PrismLibrary/Prism/releases/tag/$(Version)</PackageReleaseNotes>
   </PropertyGroup>
 
   <PropertyGroup Condition=" $(TargetFramework.StartsWith('MonoAndroid')) ">
@@ -70,23 +121,21 @@
     <When Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
       <PropertyGroup>
         <SupportedOSPlatformVersion>14.2</SupportedOSPlatformVersion>
-        <RuntimeIdentifier Condition="'$(RuntimeIdentifier)'==''">iossimulator-x64</RuntimeIdentifier>
       </PropertyGroup>
     </When>
     <When Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'macos'">
       <PropertyGroup>
         <SupportedOSPlatformVersion>10.14</SupportedOSPlatformVersion>
-        <RuntimeIdentifier Condition="'$(RuntimeIdentifier)'==''">osx-x64</RuntimeIdentifier>
       </PropertyGroup>
     </When>
     <When Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">
       <PropertyGroup>
         <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
-        <RuntimeIdentifier Condition="'$(RuntimeIdentifier)'==''">maccatalyst-x64</RuntimeIdentifier>
       </PropertyGroup>
     </When>
     <When Condition="$(TargetFramework.Contains('windows10'))">
       <PropertyGroup>
+        <UseRidGraph>true</UseRidGraph>
         <SupportedOSPlatformVersion>10.0.18362.0</SupportedOSPlatformVersion>
         <TargetPlatformMinVersion>10.0.18362.0</TargetPlatformMinVersion>
       </PropertyGroup>

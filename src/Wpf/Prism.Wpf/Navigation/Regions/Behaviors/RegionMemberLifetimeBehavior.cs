@@ -1,14 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Collections.Specialized;
 using Prism.Common;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
-#endif
 
 namespace Prism.Navigation.Regions.Behaviors
 {
@@ -47,7 +38,7 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         protected override void OnAttach()
         {
-            this.Region.ActiveViews.CollectionChanged += this.OnActiveViewsChanged;
+            Region.ActiveViews.CollectionChanged += OnActiveViewsChanged;
         }
 
         private void OnActiveViewsChanged(object sender, NotifyCollectionChangedEventArgs e)

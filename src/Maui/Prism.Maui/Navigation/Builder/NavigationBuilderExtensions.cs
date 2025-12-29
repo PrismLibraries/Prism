@@ -1,4 +1,4 @@
-﻿using Prism.Common;
+using Prism.Common;
 using Prism.Navigation.Builder;
 
 namespace Prism.Navigation;
@@ -12,9 +12,6 @@ public static class NavigationBuilderExtensions
     /// <returns><see cref="INavigationBuilder"/></returns>
     public static INavigationBuilder CreateBuilder(this INavigationService navigationService) =>
            new NavigationBuilder(navigationService);
-
-    public static Task<INavigationResult> GoBackTo<TViewModel>(this INavigationBuilder builder) =>
-        builder.GoBackTo<TViewModel>(null);
 
     internal static string GetNavigationKey<TViewModel>(object builder)
     {
@@ -116,6 +113,15 @@ public static class NavigationBuilderExtensions
     /// <remarks>This should only be used when you have a single <see cref="NavigationPage"/> registered for Navigation. Typically this is automatically registered for you by Prism.</remarks>
     public static INavigationBuilder AddNavigationPage(this INavigationBuilder builder, bool useModalNavigation) =>
         builder.AddNavigationPage(o => o.UseModalNavigation(useModalNavigation));
+
+    /// <summary>
+    /// Navigates back to the specified view model asynchronously.
+    /// </summary>
+    /// <typeparam name="TViewModel">The ViewModel to navigate to.</typeparam>
+    /// <param name="builder">The <see cref="INavigationBuilder"/>.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    public static Task<INavigationResult> GoBackToAsync<TViewModel>(this INavigationBuilder builder) =>
+        builder.GoBackToAsync(GetNavigationKey<TViewModel>(builder));
 
     //public static INavigationBuilder AddSegment(this INavigationBuilder builder, string segmentName, params string[] createTabs)
     //{

@@ -1,7 +1,4 @@
-﻿using System;
-using System.Windows;
 using Prism.Common;
-using Prism.Ioc;
 using Prism.Modularity;
 using Prism.Navigation.Regions;
 
@@ -61,7 +58,6 @@ namespace Prism
             _moduleCatalog = CreateModuleCatalog();
             RegisterRequiredTypes(_containerExtension);
             RegisterTypes(_containerExtension);
-            _containerExtension.FinalizeExtension();
 
             ConfigureModuleCatalog(_moduleCatalog);
 

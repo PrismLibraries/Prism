@@ -1,18 +1,7 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using Prism.Common;
-using Prism.Ioc;
 using Prism.Ioc.Internals;
 using Prism.Properties;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
-#endif
-
 
 namespace Prism.Navigation.Regions
 {
@@ -75,7 +64,6 @@ namespace Prism.Navigation.Regions
                         navigationAware = frameworkElement.DataContext as IRegionAware;
                         return navigationAware == null || navigationAware.IsNavigationTarget(navigationContext);
                     });
-
 
             var view = acceptingCandidates.FirstOrDefault();
 

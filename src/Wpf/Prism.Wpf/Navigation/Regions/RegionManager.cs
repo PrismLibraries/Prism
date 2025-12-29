@@ -1,25 +1,13 @@
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
-using System.Linq;
 using System.Reflection;
-using System.Threading;
 using Prism.Common;
 using Prism.Events;
-using Prism.Ioc;
-using Prism.Properties;
-using Prism.Navigation.Regions.Behaviors;
 using Prism.Ioc.Internals;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
-#endif
-
+using Prism.Navigation.Regions.Behaviors;
+using Prism.Properties;
 
 namespace Prism.Navigation.Regions
 {
@@ -46,11 +34,17 @@ namespace Prism.Navigation.Regions
         /// will create and adapt a new region for that control, and register it
         /// in the <see cref="IRegionManager"/> with the specified region name.
         /// </remarks>
+#if !AVALONIA
         public static readonly DependencyProperty RegionNameProperty = DependencyProperty.RegisterAttached(
             "RegionName",
             typeof(string),
             typeof(RegionManager),
             new PropertyMetadata(defaultValue: null, propertyChangedCallback: OnSetRegionNameCallback));
+#else
+        public static readonly AvaloniaProperty RegionNameProperty = AvaloniaProperty.RegisterAttached<AvaloniaObject, string>(
+            "RegionName",
+            typeof(RegionManager));
+#endif
 
         /// <summary>
         /// Sets the <see cref="RegionNameProperty"/> attached property.
@@ -79,9 +73,13 @@ namespace Prism.Navigation.Regions
             return regionTarget.GetValue(RegionNameProperty) as string;
         }
 
+#if !AVALONIA
         private static readonly DependencyProperty ObservableRegionProperty =
-            DependencyProperty.RegisterAttached("ObservableRegion", typeof(ObservableObject<IRegion>), typeof(RegionManager), null);
-
+        DependencyProperty.RegisterAttached("ObservableRegion", typeof(ObservableObject<IRegion>), typeof(RegionManager), null);
+#else
+        private static readonly AvaloniaProperty ObservableRegionProperty =
+            AvaloniaProperty.RegisterAttached<AvaloniaObject, ObservableObject<IRegion>>("ObservableRegion", typeof(RegionManager));
+#endif
 
         /// <summary>
         /// Returns an <see cref="ObservableObject{T}"/> wrapper that can hold an <see cref="IRegion"/>. Using this wrapper
@@ -135,8 +133,13 @@ namespace Prism.Navigation.Regions
         /// will create and adapt a new region for that control, and register it
         /// in the <see cref="IRegionManager"/> with the specified region name.
         /// </remarks>
+#if !AVALONIA
         public static readonly DependencyProperty RegionManagerProperty =
             DependencyProperty.RegisterAttached("RegionManager", typeof(IRegionManager), typeof(RegionManager), null);
+#else
+        public static readonly AvaloniaProperty RegionManagerProperty =
+            AvaloniaProperty.RegisterAttached<AvaloniaObject, IRegionManager>("RegionManager", typeof(RegionManager));
+#endif
 
         /// <summary>
         /// Gets the value of the <see cref="RegionNameProperty"/> attached property.
@@ -167,8 +170,13 @@ namespace Prism.Navigation.Regions
         /// <summary>
         /// Identifies the RegionContext attached property.
         /// </summary>
+#if !AVALONIA
         public static readonly DependencyProperty RegionContextProperty =
-            DependencyProperty.RegisterAttached("RegionContext", typeof(object), typeof(RegionManager), new PropertyMetadata(defaultValue: null, propertyChangedCallback: OnRegionContextChanged));
+        DependencyProperty.RegisterAttached("RegionContext", typeof(object), typeof(RegionManager), new PropertyMetadata(defaultValue: null, propertyChangedCallback: OnRegionContextChanged));
+#else
+        public static readonly AvaloniaProperty RegionContextProperty =
+                    AvaloniaProperty.RegisterAttached<AvaloniaObject, object>("RegionContext", typeof(RegionManager));
+#endif
 
         private static void OnRegionContextChanged(DependencyObject depObj, DependencyPropertyChangedEventArgs e)
         {
@@ -239,10 +247,10 @@ namespace Prism.Navigation.Regions
 
         private static bool IsInDesignMode(DependencyObject element)
         {
-#if HAS_WINUI
-            return Windows.ApplicationModel.DesignMode.DesignModeEnabled;
-#else
+#if !AVALONIA
             return DesignerProperties.GetIsInDesignMode(element);
+#else
+            return Design.IsDesignMode;
 #endif
         }
 
@@ -257,6 +265,15 @@ namespace Prism.Navigation.Regions
         {
             regionCollection = new RegionCollection(this);
         }
+
+#if AVALONIA
+        static RegionManager()
+        {
+            // TODO: Could this go into the default constructor?
+            RegionNameProperty.Changed.Subscribe(args => OnSetRegionNameCallback(args?.Sender, args));
+            RegionContextProperty.Changed.Subscribe(args => OnRegionContextChanged(args?.Sender, args));
+        }
+#endif
 
         /// <summary>
         /// Gets a collection of <see cref="IRegion"/> that identify each region by name. You can use this collection to add or remove regions to the current region manager.
@@ -377,12 +394,12 @@ namespace Prism.Navigation.Regions
         }
 
         /// <summary>
-        /// This method allows an IRegionManager to locate a specified region and navigate in it to the specified target Uri, passing a navigation callback and an instance of NavigationParameters, which holds a collection of object parameters.
+        /// This method allows an IRegionManager to locate a specified region and navigate in it to the specified target Uri, passing a navigation callback and an instance of <see cref="NavigationParameters"/>, which holds a collection of object parameters.
         /// </summary>
         /// <param name="regionName">The name of the region where the navigation will occur.</param>
         /// <param name="target">A Uri that represents the target where the region will navigate.</param>
         /// <param name="navigationCallback">The navigation callback that will be executed after the navigation is completed.</param>
-        /// <param name="navigationParameters">An instance of NavigationParameters, which holds a collection of object parameters.</param>
+        /// <param name="navigationParameters">An instance of <see cref="NavigationParameters"/>, which holds a collection of object parameters.</param>
         public void RequestNavigate(string regionName, Uri target, Action<NavigationResult> navigationCallback, INavigationParameters navigationParameters)
         {
             if (navigationCallback == null)
@@ -427,13 +444,13 @@ namespace Prism.Navigation.Regions
 
         private class RegionCollection : IRegionCollection
         {
-            private readonly IRegionManager regionManager;
-            private readonly List<IRegion> regions;
+            private readonly IRegionManager _regionManager;
+            private readonly List<IRegion> _regions;
 
             public RegionCollection(IRegionManager regionManager)
             {
-                this.regionManager = regionManager;
-                this.regions = new List<IRegion>();
+                _regionManager = regionManager;
+                _regions = new List<IRegion>();
             }
 
             public event NotifyCollectionChangedEventHandler CollectionChanged;
@@ -442,7 +459,7 @@ namespace Prism.Navigation.Regions
             {
                 UpdateRegions();
 
-                return this.regions.GetEnumerator();
+                return _regions.GetEnumerator();
             }
 
             IEnumerator IEnumerable.GetEnumerator()
@@ -478,16 +495,16 @@ namespace Prism.Navigation.Regions
                     throw new InvalidOperationException(Resources.RegionNameCannotBeEmptyException);
                 }
 
-                if (this.GetRegionByName(region.Name) != null)
+                if (GetRegionByName(region.Name) != null)
                 {
                     throw new ArgumentException(string.Format(CultureInfo.InvariantCulture,
                                                               Resources.RegionNameExistsException, region.Name));
                 }
 
-                this.regions.Add(region);
-                region.RegionManager = this.regionManager;
+                _regions.Add(region);
+                region.RegionManager = _regionManager;
 
-                this.OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, region, 0));
+                OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Add, region, 0));
             }
 
             public bool Remove(string regionName)
@@ -500,10 +517,10 @@ namespace Prism.Navigation.Regions
                 if (region != null)
                 {
                     removed = true;
-                    this.regions.Remove(region);
+                    _regions.Remove(region);
                     region.RegionManager = null;
 
-                    this.OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, region, 0));
+                    OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Remove, region, 0));
                 }
 
                 return removed;
@@ -531,25 +548,19 @@ namespace Prism.Navigation.Regions
                 if (region.Name != null && region.Name != regionName)
                     throw new ArgumentException(string.Format(CultureInfo.CurrentCulture, Resources.RegionManagerWithDifferentNameException, region.Name, regionName), nameof(regionName));
 
-                if (region.Name == null)
-                    region.Name = regionName;
+                region.Name ??= regionName;
 
                 Add(region);
             }
 
             private IRegion GetRegionByName(string regionName)
             {
-                return this.regions.FirstOrDefault(r => r.Name == regionName);
+                return _regions.FirstOrDefault(r => r.Name == regionName);
             }
 
             private void OnCollectionChanged(NotifyCollectionChangedEventArgs notifyCollectionChangedEventArgs)
             {
-                var handler = this.CollectionChanged;
-
-                if (handler != null)
-                {
-                    handler(this, notifyCollectionChangedEventArgs);
-                }
+                CollectionChanged?.Invoke(this, notifyCollectionChangedEventArgs);
             }
         }
     }

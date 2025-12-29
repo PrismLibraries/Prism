@@ -1,11 +1,3 @@
-using System;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
-#endif
-
 namespace Prism.Navigation.Regions.Behaviors
 {
     /// <summary>
@@ -26,8 +18,13 @@ namespace Prism.Navigation.Regions.Behaviors
         /// <summary>
         /// This attached property can be defined on a view to indicate that regions defined in it must be removed from the region manager when the parent view gets removed from a region.
         /// </summary>
+#if !AVALONIA
         public static readonly DependencyProperty ClearChildViewsProperty =
             DependencyProperty.RegisterAttached("ClearChildViews", typeof(bool), typeof(ClearChildViewsRegionBehavior), new PropertyMetadata(false));
+#else
+        public static readonly AvaloniaProperty ClearChildViewsProperty =
+            AvaloniaProperty.RegisterAttached<Control, bool>("ClearChildViews", typeof(ClearChildViewsRegionBehavior));
+#endif
 
         /// <summary>
         /// Gets the ClearChildViews attached property from a DependencyObject.
@@ -56,11 +53,11 @@ namespace Prism.Navigation.Regions.Behaviors
         }
 
         /// <summary>
-        /// Subscribes to the <see cref="Region"/>'s PropertyChanged method to monitor its RegionManager property.
+        /// Subscribes to the <see cref="Region"/>'s PropertyChanged method to monitor its <see cref="RegionManager"/> property.
         /// </summary>
         protected override void OnAttach()
         {
-            this.Region.PropertyChanged += Region_PropertyChanged;
+            Region.PropertyChanged += Region_PropertyChanged;
         }
 
         private static void ClearChildViews(IRegion region)
@@ -82,9 +79,9 @@ namespace Prism.Navigation.Regions.Behaviors
         {
             if (e.PropertyName == "RegionManager")
             {
-                if (this.Region.RegionManager == null)
+                if (Region.RegionManager == null)
                 {
-                    ClearChildViews(this.Region);
+                    ClearChildViews(Region);
                 }
             }
         }

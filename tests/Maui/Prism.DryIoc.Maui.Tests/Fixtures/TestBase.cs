@@ -1,9 +1,10 @@
-﻿using Prism.DryIoc.Maui.Tests.Mocks.ViewModels;
-using Prism.DryIoc.Maui.Tests.Mocks.Views;
 using Microsoft.Extensions.Logging;
-using Prism.DryIoc.Maui.Tests.Mocks.Logging;
-using Microsoft.Maui.Dispatching;
 using Prism.DryIoc.Maui.Tests.Mocks;
+using Prism.DryIoc.Maui.Tests.Mocks.Logging;
+using Prism.DryIoc.Maui.Tests.Mocks.Navigation;
+using Prism.DryIoc.Maui.Tests.Mocks.ViewModels;
+using Prism.DryIoc.Maui.Tests.Mocks.Views;
+using Prism.Events;
 
 namespace Prism.DryIoc.Maui.Tests.Fixtures;
 
@@ -26,7 +27,9 @@ public abstract class TestBase
             {
                 prism.RegisterTypes(container =>
                 {
+                    container.RegisterScoped<INavigationService, TestPageNavigationService>();
                     container.RegisterForNavigation<MockHome, MockHomeViewModel>()
+                        .RegisterForNavigation<MockExplicitTabbedPage>()
                         .RegisterForNavigation<MockViewA, MockViewAViewModel>()
                         .RegisterForNavigation<MockViewB, MockViewBViewModel>()
                         .RegisterForNavigation<MockViewC, MockViewCViewModel>()
@@ -64,7 +67,7 @@ public abstract class TestBase
             });
     }
 
-    protected Window GetWindow(MauiApp mauiApp)
+    protected static PrismWindow GetWindow(MauiApp mauiApp)
     {
         var app = mauiApp.Services.GetService<IApplication>();
         Assert.NotNull(app);

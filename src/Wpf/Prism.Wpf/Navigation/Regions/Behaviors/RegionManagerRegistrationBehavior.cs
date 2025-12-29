@@ -1,13 +1,10 @@
-using System;
 using System.ComponentModel;
-using Prism.Properties;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
-#else
-using System.Windows;
+#if AVALONIA
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.VisualTree;
 #endif
+using Prism.Properties;
 
 namespace Prism.Navigation.Regions.Behaviors
 {
@@ -31,7 +28,7 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         public RegionManagerRegistrationBehavior()
         {
-            this.RegionManagerAccessor = new DefaultRegionManagerAccessor();
+            RegionManagerAccessor = new DefaultRegionManagerAccessor();
         }
 
         /// <summary>
@@ -57,7 +54,8 @@ namespace Prism.Navigation.Regions.Behaviors
                 {
                     throw new InvalidOperationException(Resources.HostControlCannotBeSetAfterAttach);
                 }
-                this.hostControl = value;
+
+                hostControl = value;
             }
         }
 
@@ -67,52 +65,52 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         protected override void OnAttach()
         {
-            if (string.IsNullOrEmpty(this.Region.Name))
+            if (string.IsNullOrEmpty(Region.Name))
             {
-                this.Region.PropertyChanged += this.Region_PropertyChanged;
+                Region.PropertyChanged += Region_PropertyChanged;
             }
             else
             {
-                this.StartMonitoringRegionManager();
+                StartMonitoringRegionManager();
             }
         }
 
         private void Region_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == "Name" && !string.IsNullOrEmpty(this.Region.Name))
+            if (e.PropertyName == "Name" && !string.IsNullOrEmpty(Region.Name))
             {
-                this.Region.PropertyChanged -= this.Region_PropertyChanged;
-                this.StartMonitoringRegionManager();
+                Region.PropertyChanged -= Region_PropertyChanged;
+                StartMonitoringRegionManager();
             }
         }
 
         private void StartMonitoringRegionManager()
         {
-            this.RegionManagerAccessor.UpdatingRegions += this.OnUpdatingRegions;
-            this.TryRegisterRegion();
+            RegionManagerAccessor.UpdatingRegions += OnUpdatingRegions;
+            TryRegisterRegion();
         }
 
         private void TryRegisterRegion()
         {
-            DependencyObject targetElement = this.HostControl;
+            DependencyObject targetElement = HostControl;
             if (targetElement.CheckAccess())
             {
-                IRegionManager regionManager = this.FindRegionManager(targetElement);
+                IRegionManager regionManager = FindRegionManager(targetElement);
 
-                IRegionManager attachedRegionManager = this.GetAttachedRegionManager();
+                IRegionManager attachedRegionManager = GetAttachedRegionManager();
 
                 if (regionManager != attachedRegionManager)
                 {
                     if (attachedRegionManager != null)
                     {
-                        this.attachedRegionManagerWeakReference = null;
-                        attachedRegionManager.Regions.Remove(this.Region.Name);
+                        attachedRegionManagerWeakReference = null;
+                        attachedRegionManager.Regions.Remove(Region.Name);
                     }
 
                     if (regionManager != null)
                     {
-                        this.attachedRegionManagerWeakReference = new WeakReference(regionManager);
-                        regionManager.Regions.Add(this.Region);
+                        attachedRegionManagerWeakReference = new WeakReference(regionManager);
+                        regionManager.Regions.Add(Region);
                     }
                 }
             }
@@ -127,26 +125,28 @@ namespace Prism.Navigation.Regions.Behaviors
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2109:ReviewVisibleEventHandlers", Justification = "This has to be public in order to work with weak references in partial trust or Silverlight environments.")]
         public void OnUpdatingRegions(object sender, EventArgs e)
         {
-            this.TryRegisterRegion();
+            TryRegisterRegion();
         }
 
         private IRegionManager FindRegionManager(DependencyObject dependencyObject)
         {
-            var regionmanager = this.RegionManagerAccessor.GetRegionManager(dependencyObject);
+            var regionmanager = RegionManagerAccessor.GetRegionManager(dependencyObject);
             if (regionmanager != null)
             {
                 return regionmanager;
             }
 
             DependencyObject parent = null;
-#if HAS_WINUI
+#if UNO_WINUI
             parent = VisualTreeHelper.GetParent(dependencyObject);
+#elif AVALONIA
+            parent = ((dependencyObject as Avalonia.Visual)?.GetVisualParent() ?? null) as Avalonia.AvaloniaObject;
 #else
             parent = LogicalTreeHelper.GetParent(dependencyObject);
 #endif
             if (parent != null)
             {
-                return this.FindRegionManager(parent);
+                return FindRegionManager(parent);
             }
 
             return null;
@@ -154,9 +154,9 @@ namespace Prism.Navigation.Regions.Behaviors
 
         private IRegionManager GetAttachedRegionManager()
         {
-            if (this.attachedRegionManagerWeakReference != null)
+            if (attachedRegionManagerWeakReference != null)
             {
-                return this.attachedRegionManagerWeakReference.Target as IRegionManager;
+                return attachedRegionManagerWeakReference.Target as IRegionManager;
             }
 
             return null;

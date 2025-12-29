@@ -1,16 +1,5 @@
-using Prism.Properties;
-using System;
 using System.Collections.Specialized;
-using System.Linq;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Data;
-#else
-using System.Windows.Controls;
-using System.Windows.Data;
-#endif
+using Prism.Properties;
 
 namespace Prism.Navigation.Regions
 {
@@ -40,7 +29,11 @@ namespace Prism.Navigation.Regions
                 throw new ArgumentNullException(nameof(regionTarget));
 
             bool contentIsSet = regionTarget.Content != null;
+#if !AVALONIA
             contentIsSet = contentIsSet || regionTarget.HasBinding(ContentControl.ContentProperty);
+#else
+            contentIsSet = contentIsSet || regionTarget[ContentControl.ContentProperty] != null;
+#endif
 
             if (contentIsSet)
                 throw new InvalidOperationException(Resources.ContentControlHasContentException);

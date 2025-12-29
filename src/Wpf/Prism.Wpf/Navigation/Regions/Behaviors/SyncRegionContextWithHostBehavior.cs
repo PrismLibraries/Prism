@@ -1,12 +1,5 @@
-using System;
-using Prism.Properties;
 using Prism.Common;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
-#endif
+using Prism.Properties;
 
 namespace Prism.Navigation.Regions.Behaviors
 {
@@ -15,12 +8,12 @@ namespace Prism.Navigation.Regions.Behaviors
     /// the control that hosts the Region. It does this by setting the <see cref="RegionManager.RegionContextProperty"/>
     /// Dependency Property on the host control.
     ///
-    /// This behavior allows the usage of two way databinding of the RegionContext from XAML.
+    /// This behavior allows the usage of two way data binding of the RegionContext from XAML.
     /// </summary>
     public class SyncRegionContextWithHostBehavior : RegionBehavior, IHostAwareRegionBehavior
     {
         private const string RegionContextPropertyName = "Context";
-        private DependencyObject hostControl;
+        private DependencyObject _hostControl;
 
         /// <summary>
         /// Name that identifies the SyncRegionContextWithHostBehavior behavior in a collection of RegionsBehaviors.
@@ -31,7 +24,7 @@ namespace Prism.Navigation.Regions.Behaviors
         {
             get
             {
-                return RegionContext.GetObservableContext(this.hostControl);
+                return RegionContext.GetObservableContext(_hostControl);
             }
         }
 
@@ -46,7 +39,7 @@ namespace Prism.Navigation.Regions.Behaviors
         {
             get
             {
-                return hostControl;
+                return _hostControl;
             }
             set
             {
@@ -54,7 +47,8 @@ namespace Prism.Navigation.Regions.Behaviors
                 {
                     throw new InvalidOperationException(Resources.HostControlCannotBeSetAfterAttach);
                 }
-                this.hostControl = value;
+
+                _hostControl = value;
             }
         }
 
@@ -63,31 +57,31 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         protected override void OnAttach()
         {
-            if (this.HostControl != null)
+            if (HostControl != null)
             {
                 // Sync values initially.
                 SynchronizeRegionContext();
 
                 // Now register for events to keep them in sync
-                this.HostControlRegionContext.PropertyChanged += this.RegionContextObservableObject_PropertyChanged;
-                this.Region.PropertyChanged += this.Region_PropertyChanged;
+                HostControlRegionContext.PropertyChanged += RegionContextObservableObject_PropertyChanged;
+                Region.PropertyChanged += Region_PropertyChanged;
             }
         }
 
-        void Region_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        private void Region_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName == RegionContextPropertyName)
             {
-                if (RegionManager.GetRegionContext(this.HostControl) != this.Region.Context)
+                if (RegionManager.GetRegionContext(HostControl) != Region.Context)
                 {
                     // Setting this Dependency Property will automatically also change the HostControlRegionContext.Value
                     // (see RegionManager.OnRegionContextChanged())
-                    RegionManager.SetRegionContext(this.hostControl, this.Region.Context);
+                    RegionManager.SetRegionContext(_hostControl, Region.Context);
                 }
             }
         }
 
-        void RegionContextObservableObject_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        private void RegionContextObservableObject_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
             if (e.PropertyName == "Value")
             {
@@ -98,16 +92,16 @@ namespace Prism.Navigation.Regions.Behaviors
         private void SynchronizeRegionContext()
         {
             // Forward this value to the Region
-            if (this.Region.Context != this.HostControlRegionContext.Value)
+            if (Region.Context != HostControlRegionContext.Value)
             {
-                this.Region.Context = this.HostControlRegionContext.Value;
+                Region.Context = HostControlRegionContext.Value;
             }
 
             // Also make sure the region's DependencyProperty was changed (this can occur if the value
             // was changed only on the HostControlRegionContext)
-            if (RegionManager.GetRegionContext(this.HostControl) != this.HostControlRegionContext.Value)
+            if (RegionManager.GetRegionContext(HostControl) != HostControlRegionContext.Value)
             {
-                RegionManager.SetRegionContext(this.HostControl, this.HostControlRegionContext.Value);
+                RegionManager.SetRegionContext(HostControl, HostControlRegionContext.Value);
             }
         }
     }

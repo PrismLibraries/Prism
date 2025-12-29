@@ -14,6 +14,7 @@ namespace Prism.Navigation;
 public class PageNavigationService : INavigationService, IRegistryAware
 {
     private static readonly SemaphoreSlim _semaphore = new (1, 1);
+    private static readonly TimeSpan _minTimeBetweenNavigations = TimeSpan.FromMilliseconds(150);
     private static DateTime _lastNavigate;
     internal const string RemovePageRelativePath = "../";
     internal const string RemovePageInstruction = "__RemovePage/";
@@ -35,12 +36,19 @@ public class PageNavigationService : INavigationService, IRegistryAware
             {
                 _window = _pageAccessor.Page.GetParentWindow();
             }
+            else
+            {
+                _window = _windowManager.Windows.OfType<PrismWindow>().FirstOrDefault();
+            }
 
             return _window;
         }
     }
 
     // This should be resolved by the container when accessed as a Module could register views after the NavigationService was resolved
+    /// <summary>
+    /// Gets the <see cref="IViewRegistry"/>
+    /// </summary>
     public IViewRegistry Registry => _container.Resolve<INavigationRegistry>();
 
     /// <summary>
@@ -49,6 +57,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
     /// <param name="container">The <see cref="IContainerProvider"/> that will be used to resolve pages for navigation.</param>
     /// <param name="windowManager">The <see cref="IWindowManager"/> that will let the NavigationService retrieve, open or close the app Windows.</param>
     /// <param name="eventAggregator">The <see cref="IEventAggregator"/> that will raise <see cref="NavigationRequestEvent"/>.</param>
+    /// <param name="pageAccessor">The <see cref="IPageAccessor"/> that will let the NavigationService retrieve the <see cref="Page"/> for the current scope.</param>q
     public PageNavigationService(IContainerProvider container,
         IWindowManager windowManager,
         IEventAggregator eventAggregator,
@@ -63,72 +72,25 @@ public class PageNavigationService : INavigationService, IRegistryAware
     /// <summary>
     /// Navigates to the most recent entry in the back navigation history by popping the calling Page off the navigation stack.
     /// </summary>
-    /// <param name="name">The name of the View to navigate back to</param>
     /// <param name="parameters">The navigation parameters</param>
-    /// <returns><see cref="INavigationResult"/> indicating whether the request was successful or if there was an encountered <see cref="Exception"/>.</returns>
-    public virtual async Task<INavigationResult> GoBackToAsync(string name, INavigationParameters parameters)
+    /// <returns>If <c>true</c> a go back operation was successful. If <c>false</c> the go back operation failed.</returns>
+    public virtual async Task<INavigationResult> GoBackAsync(INavigationParameters parameters)
     {
-        await _semaphore.WaitAsync();
-        Page page = null;
         try
         {
-            parameters ??= new NavigationParameters();
-            NavigationSource = PageNavigationSource.NavigationService;
-            if (string.IsNullOrEmpty(name))
-                throw new ArgumentNullException("No Navigation Key was specified to Navigate Back To");
-            else if (!Registry.IsRegistered(name))
-                throw new NavigationException(NavigationException.NoPageIsRegistered, name);
-
-            page = GetCurrentPage();
-            parameters.GetNavigationParametersInternal().Add(KnownInternalParameters.NavigationMode, NavigationMode.Back);
-
-            while (page is not null && ViewModelLocator.GetNavigationName(page) != name)
-            {
-                if (IsRoot(GetPageFromWindow(), page))
-                    throw new NavigationException(NavigationException.CannotPopApplicationMainPage, page);
-
-                var canNavigate = await MvvmHelpers.CanNavigateAsync(page, parameters);
-                if (!canNavigate)
-                {
-                    throw new NavigationException(NavigationException.IConfirmNavigationReturnedFalse, page);
-                }
-
-                bool useModalForDoPop = UseModalGoBack(page, parameters);
-                Page previousPage = MvvmHelpers.GetOnNavigatedToTarget(page, Window?.Page, useModalForDoPop);
-
-                bool animated = parameters.ContainsKey(KnownNavigationParameters.Animated) ? parameters.GetValue<bool>(KnownNavigationParameters.Animated) : true;
-                var poppedPage = await DoPop(page.Navigation, useModalForDoPop, animated);
-                if (poppedPage != null)
-                {
-                    MvvmHelpers.OnNavigatedFrom(page, parameters);
-                    MvvmHelpers.OnNavigatedTo(previousPage, parameters);
-                    MvvmHelpers.DestroyPage(poppedPage);
-                }
-
-                page = previousPage;
-            }
-
-            return Notify(NavigationRequestType.GoBack, parameters);
-        }
-        catch (Exception ex)
-        {
-            return Notify(NavigationRequestType.GoBack, parameters, ex);
+            await WaitForPendingNavigationRequests();
+            return await GoBackInternalAsync(parameters);
         }
         finally
         {
+            _lastNavigate = DateTime.Now;
             NavigationSource = PageNavigationSource.Device;
             _semaphore.Release();
         }
     }
 
-    /// <summary>
-    /// Navigates to the most recent entry in the back navigation history by popping the calling Page off the navigation stack.
-    /// </summary>
-    /// <param name="parameters">The navigation parameters</param>
-    /// <returns>If <c>true</c> a go back operation was successful. If <c>false</c> the go back operation failed.</returns>
-    public virtual async Task<INavigationResult> GoBackAsync(INavigationParameters parameters)
+    private async Task<INavigationResult> GoBackInternalAsync(INavigationParameters parameters)
     {
-        await _semaphore.WaitAsync();
         Page page = null;
         try
         {
@@ -137,8 +99,6 @@ public class PageNavigationService : INavigationService, IRegistryAware
             NavigationSource = PageNavigationSource.NavigationService;
 
             page = GetCurrentPage();
-            if (IsRoot(GetPageFromWindow(), page))
-                throw new NavigationException(NavigationException.CannotPopApplicationMainPage, page);
 
             parameters.GetNavigationParametersInternal().Add(KnownInternalParameters.NavigationMode, NavigationMode.Back);
 
@@ -148,11 +108,16 @@ public class PageNavigationService : INavigationService, IRegistryAware
                 throw new NavigationException(NavigationException.IConfirmNavigationReturnedFalse, page);
             }
 
+            if (IsRoot(GetPageFromWindow(), page))
+            {
+                return SendAppToBackground(page);
+            }
+
             bool useModalForDoPop = UseModalGoBack(page, parameters);
             Page previousPage = MvvmHelpers.GetOnNavigatedToTarget(page, Window?.Page, useModalForDoPop);
 
-            bool animated = parameters.ContainsKey(KnownNavigationParameters.Animated) ? parameters.GetValue<bool>(KnownNavigationParameters.Animated) : true;
-            var poppedPage = await DoPop(page.Navigation, useModalForDoPop, animated);
+            bool? animated = parameters.ContainsKey(KnownNavigationParameters.Animated) ? parameters.GetValue<bool>(KnownNavigationParameters.Animated) : null;
+            var poppedPage = await DoPop(page.Navigation, useModalForDoPop, animated ?? true);
             if (poppedPage != null)
             {
                 MvvmHelpers.OnNavigatedFrom(page, parameters);
@@ -169,13 +134,68 @@ public class PageNavigationService : INavigationService, IRegistryAware
         finally
         {
             NavigationSource = PageNavigationSource.Device;
-            _semaphore.Release();
         }
 
         return Notify(NavigationRequestType.GoBack, parameters, GetGoBackException(page, GetPageFromWindow()));
     }
 
-    private static Exception GetGoBackException(Page currentPage, IView mainPage)
+    /// <inheritdoc />
+    public virtual async Task<INavigationResult> GoBackToAsync(string viewName, INavigationParameters parameters)
+    {
+        await WaitForPendingNavigationRequests();
+        try
+        {
+            parameters ??= new NavigationParameters();
+
+            parameters.GetNavigationParametersInternal().Add(KnownInternalParameters.NavigationMode, NavigationMode.Back);
+
+            var page = GetCurrentPage();
+            var canNavigate = await MvvmHelpers.CanNavigateAsync(page, parameters);
+            if (!canNavigate)
+            {
+                throw new NavigationException(NavigationException.IConfirmNavigationReturnedFalse, page);
+            }
+
+            var pagesToDestroy = page.Navigation.NavigationStack.ToList(); // get all pages to destroy
+            pagesToDestroy.Reverse(); // destroy them in reverse order
+            var goBackPage = pagesToDestroy.FirstOrDefault(p => ViewModelLocator.GetNavigationName(p) == viewName) 
+                ?? throw new NavigationException(NavigationException.GoBackRequiresNavigationPage); // find the go back page
+            var index = pagesToDestroy.IndexOf(goBackPage);
+            pagesToDestroy.RemoveRange(index, pagesToDestroy.Count - index); // don't destroy pages from the go back page to the root page
+            var pagesToRemove = pagesToDestroy.Skip(1).ToList(); // exclude the current page from the destroy pages
+
+            bool animated = !parameters.ContainsKey(KnownNavigationParameters.Animated) || parameters.GetValue<bool>(KnownNavigationParameters.Animated);
+            NavigationSource = PageNavigationSource.NavigationService;
+            foreach(var removePage in pagesToRemove)
+            {
+                page.Navigation.RemovePage(removePage);
+            }
+            await page.Navigation.PopAsync(animated);
+            NavigationSource = PageNavigationSource.Device;
+
+            foreach (var destroyPage in pagesToDestroy)
+            {
+                MvvmHelpers.OnNavigatedFrom(destroyPage, parameters);
+                MvvmHelpers.DestroyPage(destroyPage);
+            }
+
+            MvvmHelpers.OnNavigatedTo(goBackPage, parameters);
+
+            return Notify(NavigationRequestType.GoBack, parameters);
+        }
+        catch (Exception ex)
+        {
+            return Notify(NavigationRequestType.GoBack, parameters, ex);
+        }
+        finally
+        {
+            _lastNavigate = DateTime.Now;
+            NavigationSource = PageNavigationSource.Device;
+            _semaphore.Release();
+        }
+    }
+
+    private static NavigationException GetGoBackException(Page currentPage, IView mainPage)
     {
         if (IsMainPage(currentPage, mainPage))
         {
@@ -223,11 +243,10 @@ public class PageNavigationService : INavigationService, IRegistryAware
     /// <remarks>Only works when called from a View within a NavigationPage</remarks>
     public virtual async Task<INavigationResult> GoBackToRootAsync(INavigationParameters parameters)
     {
-        await _semaphore.WaitAsync();
         try
         {
-            if (parameters is null)
-                parameters = new NavigationParameters();
+            await WaitForPendingNavigationRequests();
+            parameters ??= new NavigationParameters();
 
             parameters.GetNavigationParametersInternal().Add(KnownInternalParameters.NavigationMode, NavigationMode.Back);
 
@@ -243,7 +262,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
             var root = pagesToDestroy.Last();
             pagesToDestroy.Remove(root); //don't destroy the root page
 
-            bool animated = parameters.ContainsKey(KnownNavigationParameters.Animated) ? parameters.GetValue<bool>(KnownNavigationParameters.Animated) : true;
+            bool animated = !parameters.ContainsKey(KnownNavigationParameters.Animated) || parameters.GetValue<bool>(KnownNavigationParameters.Animated);
             NavigationSource = PageNavigationSource.NavigationService;
             await page.Navigation.PopToRootAsync(animated);
             NavigationSource = PageNavigationSource.Device;
@@ -264,6 +283,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
         }
         finally
         {
+            _lastNavigate = DateTime.Now;
             NavigationSource = PageNavigationSource.Device;
             _semaphore.Release();
         }
@@ -280,17 +300,11 @@ public class PageNavigationService : INavigationService, IRegistryAware
     /// </example>
     public virtual async Task<INavigationResult> NavigateAsync(Uri uri, INavigationParameters parameters)
     {
-        await _semaphore.WaitAsync();
-        // Ensure adequate time has passed since last navigation so that UI Refresh can Occur
-        if (DateTime.Now - _lastNavigate < TimeSpan.FromMilliseconds(150))
-        {
-            await Task.Delay(150);
-        }
+        await WaitForPendingNavigationRequests();
 
         try
         {
-            if (parameters is null)
-                parameters = new NavigationParameters();
+            parameters ??= new NavigationParameters();
 
             NavigationSource = PageNavigationSource.NavigationService;
 
@@ -298,11 +312,11 @@ public class PageNavigationService : INavigationService, IRegistryAware
 
             if (uri.IsAbsoluteUri)
             {
-                await ProcessNavigationForAbsoluteUri(navigationSegments, parameters, null, true);
+                await ProcessNavigationForAbsoluteUri(navigationSegments, parameters, null, null);
             }
             else
             {
-                await ProcessNavigation(GetCurrentPage(), navigationSegments, parameters, null, true);
+                await ProcessNavigation(GetCurrentPage(), navigationSegments, parameters, null, null);
             }
 
             return Notify(uri, parameters);
@@ -320,6 +334,95 @@ public class PageNavigationService : INavigationService, IRegistryAware
     }
 
     /// <summary>
+    /// Selects a Tab of the TabbedPage parent.
+    /// </summary>
+    /// <param name="tabName">The name of the tab to select</param>
+    /// <param name="uri">The Uri to navigate to</param>
+    /// <param name="parameters">The navigation parameters</param>
+    /// <returns><see cref="INavigationResult"/> indicating whether the request was successful or if there was an encountered <see cref="Exception"/>.</returns>
+    public virtual async Task<INavigationResult> SelectTabAsync(string tabName, Uri uri, INavigationParameters parameters)
+    {
+        try
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(tabName);
+
+            await PageNavigationService.WaitForPendingNavigationRequests();
+            NavigationSource = PageNavigationSource.NavigationService;
+
+            var tabbedPage = GetTabbedPage(_pageAccessor.Page);
+
+            static TabbedPage GetTabbedPage(Element page) =>
+                page switch
+                {
+                    TabbedPage tabbedPage => tabbedPage,
+                    null => null,
+                    _ => GetTabbedPage(page.Parent)
+                };
+
+            if (tabbedPage is null)
+                throw new NullReferenceException("The Page is null.");
+
+            var parts = tabName.Split('|');
+            Page selectedChild = null;
+            if (parts.Length == 1)
+                selectedChild = tabbedPage.Children.FirstOrDefault(x => ViewModelLocator.GetNavigationName(x) == tabName || (x is NavigationPage navPage && ViewModelLocator.GetNavigationName(navPage.RootPage) == tabName));
+            else if (parts.Length == 2)
+                selectedChild = tabbedPage.Children.FirstOrDefault(x => x is NavigationPage navPage && ViewModelLocator.GetNavigationName(navPage) == parts[0] && ViewModelLocator.GetNavigationName(navPage.RootPage) == parts[1]);
+            else
+                throw new NavigationException($"Invalid Tab Name: {tabName}");
+
+            if (selectedChild is null)
+                throw new NavigationException($"No Tab found with the Name: {tabName}");
+
+            var navigatedFromPage = _pageAccessor.Page;
+            if (!await MvvmHelpers.CanNavigateAsync(navigatedFromPage, parameters))
+                throw new NavigationException(NavigationException.IConfirmNavigationReturnedFalse, navigatedFromPage);
+
+            var navigatedToTarget = selectedChild is NavigationPage navPage ? navPage.CurrentPage : selectedChild;
+            if (uri is not null)
+            {
+                if (uri.IsAbsoluteUri)
+                {
+                    throw new NavigationException("Cannot process an absolute Navigation Uri when navigating within a specified Tab");
+                }
+
+                var navigationSegments = UriParsingHelper.GetUriSegments(uri);
+                await ProcessNavigation(navigatedToTarget, navigationSegments, parameters, null, null);
+                tabbedPage.CurrentPage = selectedChild;
+            }
+            else
+            {
+                tabbedPage.CurrentPage = selectedChild;
+                MvvmHelpers.OnNavigatedFrom(navigatedFromPage, parameters);
+                MvvmHelpers.OnNavigatedTo(navigatedToTarget, parameters);
+            }
+
+            return new NavigationResult();
+        }
+        catch (Exception ex)
+        {
+            return new NavigationResult(ex);
+        }
+        finally
+        {
+            _lastNavigate = DateTime.Now;
+            NavigationSource = PageNavigationSource.Device;
+            _semaphore.Release();
+        }
+    }
+
+    private static async Task WaitForPendingNavigationRequests()
+    {
+        await _semaphore.WaitAsync();
+        // Ensure adequate time has passed since last navigation so that UI Refresh can Occur
+        TimeSpan timeSinceLastNav = DateTime.Now - _lastNavigate;
+        if (timeSinceLastNav < _minTimeBetweenNavigations)
+        {
+            await Task.Delay(_minTimeBetweenNavigations - timeSinceLastNav);
+        }
+    }
+
+    /// <summary>
     /// Processes the Navigation for the Queued navigation segments
     /// </summary>
     /// <param name="currentPage">The Current <see cref="Page"/> that we are navigating from.</param>
@@ -328,7 +431,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
     /// <param name="useModalNavigation"><see cref="Nullable{Boolean}"/> flag if we should force Modal Navigation.</param>
     /// <param name="animated">If <c>true</c>, the navigation will be animated.</param>
     /// <returns></returns>
-    protected virtual async Task ProcessNavigation(Page currentPage, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual async Task ProcessNavigation(Page currentPage, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         if (segments.Count == 0)
         {
@@ -337,47 +440,48 @@ public class PageNavigationService : INavigationService, IRegistryAware
 
         var nextSegment = segments.Dequeue();
 
-        var pageParameters = UriParsingHelper.GetSegmentParameters(nextSegment);
+        var pageParameters = UriParsingHelper.GetSegmentParameters(nextSegment, parameters);
 
-        useModalNavigation = pageParameters.ContainsKey(KnownNavigationParameters.UseModalNavigation) ? pageParameters.GetValue<bool>(KnownNavigationParameters.UseModalNavigation) : false;
-        if (!useModalNavigation.Value && !MvvmHelpers.HasNavigationPageParent(currentPage) && (currentPage is not FlyoutPage || (currentPage.Parent is FlyoutPage parentFlyout && parentFlyout.Flyout == currentPage)))
-            useModalNavigation = true;
+        if (pageParameters.TryGetValue<bool>(KnownNavigationParameters.UseModalNavigation, out var parameterModal))
+            useModalNavigation = parameterModal;
 
-        animated = parameters.ContainsKey(KnownNavigationParameters.Animated) ?
-            parameters.GetValue<bool>(KnownNavigationParameters.Animated) :
-                pageParameters.ContainsKey(KnownNavigationParameters.Animated) ? pageParameters.GetValue<bool>(KnownNavigationParameters.Animated) : true;
+        bool? pageAnimation = animated;
+        if (animated is null && pageParameters.TryGetValue<bool>(KnownNavigationParameters.Animated, out var parameterAnimation))
+        {
+            pageAnimation = parameterAnimation;
+        }
 
         if (nextSegment == RemovePageSegment)
         {
-            await ProcessNavigationForRemovePageSegments(currentPage, nextSegment, segments, parameters, useModalNavigation, animated);
+            await ProcessNavigationForRemovePageSegments(currentPage, nextSegment, segments, parameters, useModalNavigation, pageAnimation);
             return;
         }
 
         if (currentPage is null)
         {
-            await ProcessNavigationForRootPage(nextSegment, segments, parameters, useModalNavigation, animated);
+            await ProcessNavigationForRootPage(nextSegment, segments, parameters, useModalNavigation, pageAnimation);
             return;
         }
 
         if (currentPage is ContentPage)
         {
-            await ProcessNavigationForContentPage(currentPage, nextSegment, segments, parameters, useModalNavigation, animated);
+            await ProcessNavigationForContentPage(currentPage, nextSegment, segments, parameters, useModalNavigation, pageAnimation);
         }
         else if (currentPage is NavigationPage nav)
         {
-            await ProcessNavigationForNavigationPage(nav, nextSegment, segments, parameters, useModalNavigation, animated);
+            await ProcessNavigationForNavigationPage(nav, nextSegment, segments, parameters, useModalNavigation, pageAnimation);
         }
         else if (currentPage is TabbedPage tabbed)
         {
-            await ProcessNavigationForTabbedPage(tabbed, nextSegment, segments, parameters, useModalNavigation, animated);
+            await ProcessNavigationForTabbedPage(tabbed, nextSegment, segments, parameters, useModalNavigation, pageAnimation);
         }
         else if (currentPage is FlyoutPage flyout)
         {
-            await ProcessNavigationForFlyoutPage(flyout, nextSegment, segments, parameters, useModalNavigation, animated);
+            await ProcessNavigationForFlyoutPage(flyout, nextSegment, segments, parameters, useModalNavigation, pageAnimation);
         }
     }
 
-    protected virtual Task ProcessNavigationForRemovePageSegments(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual Task ProcessNavigationForRemovePageSegments(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         if (!MvvmHelpers.HasDirectNavigationPageParent(currentPage))
         {
@@ -394,7 +498,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
         return !segments.All(x => x == RemovePageSegment);
     }
 
-    private Task RemoveAndGoBack(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    private Task RemoveAndGoBack(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         var pagesToRemove = new List<Page>();
 
@@ -413,10 +517,10 @@ public class PageNavigationService : INavigationService, IRegistryAware
 
         RemovePagesFromNavigationPage(currentPage, pagesToRemove);
 
-        return GoBackAsync(parameters);
+        return GoBackInternalAsync(parameters);
     }
 
-    private async Task RemoveAndPush(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    private async Task RemoveAndPush(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         var pagesToRemove = new List<Page>
         {
@@ -451,12 +555,12 @@ public class PageNavigationService : INavigationService, IRegistryAware
         }
     }
 
-    protected virtual Task ProcessNavigationForAbsoluteUri(Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual Task ProcessNavigationForAbsoluteUri(Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         return ProcessNavigation(null, segments, parameters, useModalNavigation, animated);
     }
 
-    protected virtual async Task ProcessNavigationForRootPage(string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual async Task ProcessNavigationForRootPage(string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         var nextPage = CreatePageFromSegment(nextSegment);
         if (nextPage is TabbedPage tabbedPage)
@@ -476,7 +580,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
         }
     }
 
-    protected virtual async Task ProcessNavigationForContentPage(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual async Task ProcessNavigationForContentPage(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         var nextPageType = Registry.GetViewType(UriParsingHelper.GetSegmentName(nextSegment));
         bool useReverse = UseReverseNavigation(currentPage, nextPageType) && !(useModalNavigation.HasValue && useModalNavigation.Value);
@@ -499,7 +603,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
         }
     }
 
-    protected virtual async Task ProcessNavigationForNavigationPage(NavigationPage currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual async Task ProcessNavigationForNavigationPage(NavigationPage currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         if (currentPage.Navigation.NavigationStack.Count == 0)
         {
@@ -537,7 +641,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
             {
                 if (nextSegment.Contains(KnownNavigationParameters.SelectedTab))
                 {
-                    var segmentParams = UriParsingHelper.GetSegmentParameters(nextSegment);
+                    var segmentParams = UriParsingHelper.GetSegmentParameters(nextSegment, parameters);
                     SelectPageTab(topPage, segmentParams);
                 }
             });
@@ -558,7 +662,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
         }
     }
 
-    protected virtual async Task ProcessNavigationForTabbedPage(TabbedPage currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual async Task ProcessNavigationForTabbedPage(TabbedPage currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         var nextPage = CreatePageFromSegment(nextSegment);
         if (nextPage is TabbedPage tabbedPage)
@@ -570,7 +674,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
         });
     }
 
-    protected virtual async Task ProcessNavigationForFlyoutPage(FlyoutPage currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    protected virtual async Task ProcessNavigationForFlyoutPage(FlyoutPage currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         bool isPresented = GetFlyoutPageIsPresented(currentPage);
 
@@ -605,7 +709,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
 
         var nextSegmentType = Registry.GetViewType(UriParsingHelper.GetSegmentName(nextSegment));
 
-        //we must recreate the NavigationPage everytime or the transitions on iOS will not work properly, unless we meet the two scenarios below
+        //we must recreate the NavigationPage every time or the transitions on iOS will not work properly, unless we meet the two scenarios below
         bool detailIsNavPage = false;
         bool reuseNavPage = false;
         if (detail is NavigationPage navPage)
@@ -639,7 +743,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
             {
                 if (detail is TabbedPage && nextSegment.Contains(KnownNavigationParameters.SelectedTab))
                 {
-                    var segmentParams = UriParsingHelper.GetSegmentParameters(nextSegment);
+                    var segmentParams = UriParsingHelper.GetSegmentParameters(nextSegment, parameters);
                     SelectPageTab(detail, segmentParams);
                 }
 
@@ -743,7 +847,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
             {
                 MvvmHelpers.OnNavigatedTo(navigationPage.CurrentPage, parameters);
             }
-            else if (tabbedPage.BindingContext != tabbedPage.CurrentPage.BindingContext)
+            else if (tabbedPage.BindingContext != tabbedPage.CurrentPage?.BindingContext)
             {
                 MvvmHelpers.OnNavigatedTo(tabbedPage.CurrentPage, parameters);
             }
@@ -824,8 +928,12 @@ public class PageNavigationService : INavigationService, IRegistryAware
 
     async Task ConfigureTabbedPage(TabbedPage tabbedPage, string segment, INavigationParameters parameters)
     {
-        var tabParameters = UriParsingHelper.GetSegmentParameters(segment);
+        var tabParameters = UriParsingHelper.GetSegmentParameters(segment, parameters);
 
+        if (tabParameters.GetValue<string>(KnownNavigationParameters.Title) is string title)
+        {
+            tabbedPage.Title = title;
+        }
         var tabsToCreate = tabParameters.GetValues<string>(KnownNavigationParameters.CreateTab);
         foreach (var tabToCreateEncoded in tabsToCreate ?? Array.Empty<string>())
         {
@@ -909,40 +1017,59 @@ public class PageNavigationService : INavigationService, IRegistryAware
     {
         var registry = Registry;
         var selectRegistration = registry.Registrations.FirstOrDefault(x => x.Name == selectedTab);
+        Page child = null;
         if (selectRegistration is null)
-            throw new KeyNotFoundException($"No Registration found to select tab '{selectedTab}'.");
-
-        var child = tabbedPage.Children
-            .FirstOrDefault(x => IsPage(x, selectRegistration));
-        if (child is not null)
         {
-            tabbedPage.CurrentPage = child;
+            child = tabbedPage.Children.FirstOrDefault(x => x.GetType().Name == selectedTab) ??
+                throw new KeyNotFoundException($"No Registration found to select tab '{selectedTab}'.");
         }
-    }
+        else
+        {
+            child = tabbedPage.Children.FirstOrDefault(x => IsPage(x, selectRegistration, selectedTab)) ??
+                throw new KeyNotFoundException($"No Child Page was found with the key '{selectedTab}'.");
+        }
 
-    private static bool IsPage(Page page, ViewRegistration registration) =>
-        (string)page.GetValue(ViewModelLocator.NavigationNameProperty) == registration.Name || page.GetType() == registration.View;
+        tabbedPage.CurrentPage = child;
+    }
 
     private void TabbedPageSelectNavigationChildTab(TabbedPage tabbedPage, string rootTab, string selectedTab)
     {
         var registry = Registry;
         var rootRegistration = registry.Registrations.FirstOrDefault(x => x.Name == rootTab);
         var selectRegistration = registry.Registrations.FirstOrDefault(x => x.Name == selectedTab);
-        if (rootRegistration is null)
-            throw new KeyNotFoundException($"No Registration found to select tab '{rootTab}'.");
-        else if (selectRegistration is null)
-            throw new KeyNotFoundException($"No Registration found to select tab '{selectedTab}'.");
-        else if (!rootRegistration.View.IsAssignableTo(typeof(NavigationPage)))
-            throw new InvalidOperationException($"Could not select Tab with a root type '{rootRegistration.View.FullName}'. This must inherit from NavigationPage.");
 
-        var child = tabbedPage.Children
-            .FirstOrDefault(x => x is NavigationPage navPage && IsPage(x, rootRegistration) && (IsPage(navPage.RootPage, selectRegistration) || IsPage(navPage.CurrentPage, selectRegistration)));
+        var candidates = tabbedPage.Children
+            .OfType<NavigationPage>()
+            .Where(x => IsPage(x, rootRegistration, rootTab));
+        var child = candidates.SingleOrDefault(x => IsPage(x.RootPage, selectRegistration, selectedTab)) ??
+            candidates.SingleOrDefault(x => IsPage(x.CurrentPage, selectRegistration, selectedTab));
 
         if (child is not null)
             tabbedPage.CurrentPage = child;
     }
 
-    protected virtual async Task UseReverseNavigation(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool animated)
+    // This provides a fallback if we did not find a registration for the Page
+    private static bool IsPage(Page referencePage, string name) =>
+        ViewModelLocator.GetNavigationName(referencePage) == name || referencePage.GetType().Name == name || referencePage.GetType().FullName == name;
+
+    private static bool IsPage(Page referencePage, ViewRegistration registration, string name)
+    {
+        var referenceType = referencePage.GetType();
+        if (registration is not null)
+        {
+            // We're allowing an empty string here for cases where someone has a manually constructed TabbedPage
+            var navigationName = ViewModelLocator.GetNavigationName(referencePage);
+            if (registration.View == referenceType && (string.IsNullOrEmpty(navigationName) || navigationName == name))
+                return true;
+
+            // This is an override for cases where someone may have a NavigationPage
+            return name == nameof(NavigationPage) && referenceType == typeof(NavigationPage);
+        }
+
+        return IsPage(referencePage, name);
+    }
+
+    protected virtual async Task UseReverseNavigation(Page currentPage, string nextSegment, Queue<string> segments, INavigationParameters parameters, bool? useModalNavigation, bool? animated)
     {
         var navigationStack = new Stack<string>();
 
@@ -962,7 +1089,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
             }
 
             //if any page decide to go modal, we need to consider it and all pages after it an illegal page
-            var pageParameters = UriParsingHelper.GetSegmentParameters(item);
+            var pageParameters = UriParsingHelper.GetSegmentParameters(item, parameters);
             if (pageParameters.ContainsKey(KnownNavigationParameters.UseModalNavigation))
             {
                 if (pageParameters.GetValue<bool>(KnownNavigationParameters.UseModalNavigation))
@@ -1018,16 +1145,14 @@ public class PageNavigationService : INavigationService, IRegistryAware
             await ProcessNavigation(currentPage.Navigation.NavigationStack.Last(), illegalSegments, parameters, true, animated);
     }
 
-    protected virtual async Task DoPush(Page currentPage, Page page, bool? useModalNavigation, bool animated, bool insertBeforeLast = false, int navigationOffset = 0)
+    protected virtual async Task DoPush(Page currentPage, Page page, bool? useModalNavigation, bool? animated, bool insertBeforeLast = false, int navigationOffset = 0)
     {
-        if (page is null)
-            throw new ArgumentNullException(nameof(page));
+        ArgumentNullException.ThrowIfNull(page);
 
         try
         {
             // Prevent Page from using Parent's ViewModel
-            if (page.BindingContext is null)
-                page.BindingContext = new object();
+            page.BindingContext ??= new object();
 
             if (currentPage is null)
             {
@@ -1054,7 +1179,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
 
                 if (useModalForPush)
                 {
-                    await currentPage.Navigation.PushModalAsync(page, animated);
+                    await currentPage.Navigation.PushModalAsync(page, animated ?? true);
                 }
                 else
                 {
@@ -1064,7 +1189,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
                     }
                     else
                     {
-                        await currentPage.Navigation.PushAsync(page, animated);
+                        await currentPage.Navigation.PushAsync(page, animated ?? true);
                     }
                 }
             }
@@ -1097,8 +1222,7 @@ public class PageNavigationService : INavigationService, IRegistryAware
 
     internal static bool UseModalNavigation(Page currentPage, bool? useModalNavigationDefault)
     {
-        bool useModalNavigation = true;
-
+        bool useModalNavigation;
         if (useModalNavigationDefault.HasValue)
             useModalNavigation = useModalNavigationDefault.Value;
         else if (currentPage is NavigationPage)
@@ -1130,6 +1254,8 @@ public class PageNavigationService : INavigationService, IRegistryAware
             return true;
         else if (navPage.Parent is TabbedPage tabbed && tabbed != rootPage)
             return true;
+        else if (rootPage != navPage || IsRoot(rootPage, navPage.CurrentPage))
+            return true;
 
         return false;
     }
@@ -1137,6 +1263,18 @@ public class PageNavigationService : INavigationService, IRegistryAware
     internal static bool UseReverseNavigation(Page currentPage, Type nextPageType)
     {
         return MvvmHelpers.HasNavigationPageParent(currentPage) && MvvmHelpers.IsSameOrSubclassOf<ContentPage>(nextPageType);
+    }
+
+    private INavigationResult SendAppToBackground(Page page)
+    {
+#if ANDROID
+        if (Window.Handler.PlatformView is MauiAppCompatActivity activity)
+        {
+            activity.MoveTaskToBack(true);
+            return new NavigationResult();
+        }
+#endif
+        throw new NavigationException(NavigationException.CannotPopApplicationMainPage, page);
     }
 
     private INavigationResult Notify(NavigationRequestType type, INavigationParameters parameters, Exception exception = null)

@@ -1,14 +1,6 @@
-using Prism.Properties;
-using Prism.Navigation.Regions.Behaviors;
-using System;
 using System.Globalization;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Data;
-#else
-using System.Windows;
-#endif
+using Prism.Navigation.Regions.Behaviors;
+using Prism.Properties;
 
 namespace Prism.Navigation.Regions
 {
@@ -24,7 +16,7 @@ namespace Prism.Navigation.Regions
         /// <param name="regionBehaviorFactory">The factory used to create the region behaviors to attach to the created regions.</param>
         protected RegionAdapterBase(IRegionBehaviorFactory regionBehaviorFactory)
         {
-            this.RegionBehaviorFactory = regionBehaviorFactory;
+            RegionBehaviorFactory = regionBehaviorFactory;
         }
 
         /// <summary>
@@ -43,14 +35,14 @@ namespace Prism.Navigation.Regions
             if (regionName == null)
                 throw new ArgumentNullException(nameof(regionName));
 
-            IRegion region = this.CreateRegion();
+            IRegion region = CreateRegion();
             region.Name = regionName;
 
             SetObservableRegionOnHostingControl(region, regionTarget);
 
-            this.Adapt(region, regionTarget);
-            this.AttachBehaviors(region, regionTarget);
-            this.AttachDefaultBehaviors(region, regionTarget);
+            Adapt(region, regionTarget);
+            AttachBehaviors(region, regionTarget);
+            AttachDefaultBehaviors(region, regionTarget);
             return region;
         }
 
@@ -66,7 +58,7 @@ namespace Prism.Navigation.Regions
         /// <exception cref="InvalidOperationException">When <paramref name="regionTarget"/> is not of type <typeparamref name="T"/>.</exception>
         IRegion IRegionAdapter.Initialize(object regionTarget, string regionName)
         {
-            return this.Initialize(GetCastedObject(regionTarget), regionName);
+            return Initialize(GetCastedObject(regionTarget), regionName);
         }
 
         /// <summary>
@@ -82,7 +74,7 @@ namespace Prism.Navigation.Regions
             if (regionTarget == null)
                 throw new ArgumentNullException(nameof(regionTarget));
 
-            IRegionBehaviorFactory behaviorFactory = this.RegionBehaviorFactory;
+            IRegionBehaviorFactory behaviorFactory = RegionBehaviorFactory;
             if (behaviorFactory != null)
             {
                 DependencyObject dependencyObjectRegionTarget = regionTarget as DependencyObject;

@@ -1,13 +1,8 @@
-using Prism.Properties;
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
+using Prism.Properties;
+#if AVALONIA
+using Avalonia.Threading;
 #endif
 
 namespace Prism.Navigation.Regions.Behaviors
@@ -23,7 +18,7 @@ namespace Prism.Navigation.Regions.Behaviors
     /// </remarks>
     public class DelayedRegionCreationBehavior
     {
-        private readonly RegionAdapterMappings regionAdapterMappings;
+        private readonly RegionAdapterMappings _regionAdapterMappings;
         private WeakReference elementWeakReference;
         private bool regionCreated;
 
@@ -39,8 +34,8 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </param>
         public DelayedRegionCreationBehavior(RegionAdapterMappings regionAdapterMappings)
         {
-            this.regionAdapterMappings = regionAdapterMappings;
-            this.RegionManagerAccessor = new DefaultRegionManagerAccessor();
+            _regionAdapterMappings = regionAdapterMappings;
+            RegionManagerAccessor = new DefaultRegionManagerAccessor();
         }
 
         /// <summary>
@@ -56,8 +51,8 @@ namespace Prism.Navigation.Regions.Behaviors
         /// <value>The target element.</value>
         public DependencyObject TargetElement
         {
-            get { return this.elementWeakReference != null ? this.elementWeakReference.Target as DependencyObject : null; }
-            set { this.elementWeakReference = new WeakReference(value); }
+            get { return elementWeakReference != null ? elementWeakReference.Target as DependencyObject : null; }
+            set { elementWeakReference = new WeakReference(value); }
         }
 
         /// <summary>
@@ -66,8 +61,8 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         public void Attach()
         {
-            this.RegionManagerAccessor.UpdatingRegions += this.OnUpdatingRegions;
-            this.WireUpTargetElement();
+            RegionManagerAccessor.UpdatingRegions += OnUpdatingRegions;
+            WireUpTargetElement();
         }
 
         /// <summary>
@@ -75,8 +70,8 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         public void Detach()
         {
-            this.RegionManagerAccessor.UpdatingRegions -= this.OnUpdatingRegions;
-            this.UnWireTargetElement();
+            RegionManagerAccessor.UpdatingRegions -= OnUpdatingRegions;
+            UnWireTargetElement();
         }
 
         /// <summary>
@@ -90,27 +85,31 @@ namespace Prism.Navigation.Regions.Behaviors
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Security", "CA2109:ReviewVisibleEventHandlers", Justification = "This has to be public in order to work with weak references in partial trust or Silverlight environments.")]
         public void OnUpdatingRegions(object sender, EventArgs e)
         {
-            this.TryCreateRegion();
+            TryCreateRegion();
         }
 
         private void TryCreateRegion()
         {
-            DependencyObject targetElement = this.TargetElement;
+            DependencyObject targetElement = TargetElement;
             if (targetElement == null)
             {
-                this.Detach();
+                Detach();
                 return;
             }
 
+#if !AVALONIA
             if (targetElement.CheckAccess())
+#else
+            if (Dispatcher.UIThread.CheckAccess())
+#endif
             {
-                this.Detach();
+                Detach();
 
-                if (!this.regionCreated)
+                if (!regionCreated)
                 {
-                    string regionName = this.RegionManagerAccessor.GetRegionName(targetElement);
+                    string regionName = RegionManagerAccessor.GetRegionName(targetElement);
                     CreateRegion(targetElement, regionName);
-                    this.regionCreated = true;
+                    regionCreated = true;
                 }
             }
         }
@@ -129,7 +128,7 @@ namespace Prism.Navigation.Regions.Behaviors
             try
             {
                 // Build the region
-                IRegionAdapter regionAdapter = this.regionAdapterMappings.GetMapping(targetElement.GetType());
+                IRegionAdapter regionAdapter = _regionAdapterMappings.GetMapping(targetElement.GetType());
                 IRegion region = regionAdapter.Initialize(targetElement, regionName);
 
                 return region;
@@ -140,34 +139,42 @@ namespace Prism.Navigation.Regions.Behaviors
             }
         }
 
+#if !AVALONIA
         private void ElementLoaded(object sender, RoutedEventArgs e)
+#else
+        private void ElementLoaded(object sender, VisualTreeAttachmentEventArgs e)
+#endif
         {
-            this.UnWireTargetElement();
-            this.TryCreateRegion();
+            UnWireTargetElement();
+            TryCreateRegion();
         }
 
         private void WireUpTargetElement()
         {
-            FrameworkElement element = this.TargetElement as FrameworkElement;
+            FrameworkElement element = TargetElement as FrameworkElement;
             if (element != null)
             {
-                element.Loaded += this.ElementLoaded;
+#if !AVALONIA
+                element.Loaded += ElementLoaded;
+#else
+                element.AttachedToVisualTree += ElementLoaded;
+#endif
                 return;
             }
 
-#if !HAS_WINUI
-            FrameworkContentElement fcElement = this.TargetElement as FrameworkContentElement;
+#if (!UNO_WINUI && !AVALONIA)
+            FrameworkContentElement fcElement = TargetElement as FrameworkContentElement;
             if (fcElement != null)
             {
-                fcElement.Loaded += this.ElementLoaded;
+                fcElement.Loaded += ElementLoaded;
                 return;
             }
 #endif
 
-            //if the element is a dependency object, and not a FrameworkElement, nothing is holding onto the reference after the DelayedRegionCreationBehavior
+            //if the element is a dependency/avalonia object, and not a FrameworkElement/Avalonia.Control, nothing is holding onto the reference after the DelayedRegionCreationBehavior
             //is instantiated inside RegionManager.CreateRegion(DependencyObject element). If the GC runs before RegionManager.UpdateRegions is called, the region will
             //never get registered because it is gone from the updatingRegionsListeners list inside RegionManager. So we need to hold on to it. This should be rare.
-            DependencyObject depObj = this.TargetElement as DependencyObject;
+            DependencyObject depObj = TargetElement as DependencyObject;
             if (depObj != null)
             {
                 Track();
@@ -177,30 +184,33 @@ namespace Prism.Navigation.Regions.Behaviors
 
         private void UnWireTargetElement()
         {
-            FrameworkElement element = this.TargetElement as FrameworkElement;
+            FrameworkElement element = TargetElement as FrameworkElement;
             if (element != null)
             {
-                element.Loaded -= this.ElementLoaded;
+#if !AVALONIA
+                element.Loaded -= ElementLoaded;
+#else
+                element.AttachedToVisualTree -= ElementLoaded;
+#endif
                 return;
             }
 
-#if !HAS_WINUI
-            FrameworkContentElement fcElement = this.TargetElement as FrameworkContentElement;
+#if (!UNO_WINUI && !AVALONIA)
+            FrameworkContentElement fcElement = TargetElement as FrameworkContentElement;
             if (fcElement != null)
             {
-                fcElement.Loaded -= this.ElementLoaded;
+                fcElement.Loaded -= ElementLoaded;
                 return;
             }
 #endif
 
-            DependencyObject depObj = this.TargetElement as DependencyObject;
+            DependencyObject depObj = TargetElement as DependencyObject;
             if (depObj != null)
             {
                 Untrack();
                 return;
             }
         }
-
 
         /// <summary>
         /// Add the instance of this class to <see cref="_instanceTracker"/> to keep it alive

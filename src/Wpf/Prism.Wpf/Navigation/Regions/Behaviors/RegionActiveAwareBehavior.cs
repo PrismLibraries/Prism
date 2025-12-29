@@ -1,13 +1,5 @@
-using System;
 using System.Collections.Specialized;
-using System.Linq;
 using Prism.Common;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
-#endif
 
 namespace Prism.Navigation.Regions.Behaviors
 {
@@ -38,7 +30,7 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         public void Attach()
         {
-            INotifyCollectionChanged collection = this.GetCollection();
+            INotifyCollectionChanged collection = GetCollection();
             if (collection != null)
             {
                 collection.CollectionChanged += OnCollectionChanged;
@@ -50,7 +42,7 @@ namespace Prism.Navigation.Regions.Behaviors
         /// </summary>
         public void Detach()
         {
-            INotifyCollectionChanged collection = this.GetCollection();
+            INotifyCollectionChanged collection = GetCollection();
             if (collection != null)
             {
                 collection.CollectionChanged -= OnCollectionChanged;
@@ -95,7 +87,7 @@ namespace Prism.Navigation.Regions.Behaviors
 
                 // If the view's RegionManager attached property is different from the region's RegionManager,
                 // then the view's region manager is a scoped region manager.
-                if (regionManager == null || regionManager == this.Region.RegionManager) return;
+                if (regionManager == null || regionManager == Region.RegionManager) return;
 
                 var activeViews = regionManager.Regions.SelectMany(e => e.ActiveViews);
 
@@ -129,7 +121,7 @@ namespace Prism.Navigation.Regions.Behaviors
 
         private INotifyCollectionChanged GetCollection()
         {
-            return this.Region.ActiveViews;
+            return Region.ActiveViews;
         }
     }
 }

@@ -1,7 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Diagnostics.CodeAnalysis;
 
+#nullable enable
 namespace Prism.Common
 {
     /// <summary>
@@ -59,13 +58,13 @@ namespace Prism.Common
         /// if the key is found; otherwise, the default value for the type of the value parameter.
         /// </param>
         /// <returns>true if the <see cref="IParameters"/> contains a parameter with the specified key; otherwise, false.</returns>
-        bool TryGetValue<T>(string key, out T value);
+        bool TryGetValue<T>(string key, [MaybeNullWhen(false)] out T value);
 
         /// <summary>
         /// Gets the parameter associated with the specified key (legacy).
         /// </summary>
         /// <param name="key">The key of the parameter to get.</param>
         /// <returns>A matching value if it exists.</returns>
-        object this[string key] { get; }
+        object? this[string key] { get; }
     }
 }

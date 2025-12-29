@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 
 namespace Prism.Dialogs;
 
@@ -12,7 +12,7 @@ internal class RelativeContentSizeConverter : IValueConverter
         {
             if (value == 0)
             {
-                relativeSize = 1;
+                relativeSize = -1;
             }
             else if (value > 1)
             {
@@ -28,6 +28,9 @@ internal class RelativeContentSizeConverter : IValueConverter
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         var pageSize = double.Parse(value.ToString());
+        if (pageSize < 0)
+            return pageSize;
+
         return RelativeSize * pageSize;
     }
 

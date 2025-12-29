@@ -1,16 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Prism.Common;
 using Prism.Properties;
-using Prism.Ioc;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml;
-#else
-using System.Windows;
-#endif
 
 namespace Prism.Navigation.Regions
 {

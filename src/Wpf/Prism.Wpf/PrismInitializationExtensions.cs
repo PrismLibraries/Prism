@@ -1,18 +1,9 @@
-﻿using Prism.Events;
-using Prism.Ioc;
+using Prism.Dialogs;
+using Prism.Events;
 using Prism.Modularity;
 using Prism.Mvvm;
 using Prism.Navigation.Regions;
 using Prism.Navigation.Regions.Behaviors;
-using Prism.Dialogs;
-
-#if HAS_WINUI
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-#else
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-#endif
 
 namespace Prism
 {
@@ -26,7 +17,7 @@ namespace Prism
             });
         }
 
-#if HAS_WINUI
+#if UNO_WINUI
         internal static void RegisterRequiredTypes(this IContainerRegistry containerRegistry)
         {
             containerRegistry.TryRegisterSingleton<IModuleCatalog, ModuleCatalog>();
@@ -52,7 +43,11 @@ namespace Prism
 
         internal static void RegisterDefaultRegionBehaviors(this IRegionBehaviorFactory regionBehaviors)
         {
+#if AVALONIA
+            regionBehaviors.AddIfMissing<BindRegionContextToAvaloniaObjectBehavior>(BindRegionContextToAvaloniaObjectBehavior.BehaviorKey);
+#else
             regionBehaviors.AddIfMissing<BindRegionContextToDependencyObjectBehavior>(BindRegionContextToDependencyObjectBehavior.BehaviorKey);
+#endif
             regionBehaviors.AddIfMissing<RegionActiveAwareBehavior>(RegionActiveAwareBehavior.BehaviorKey);
             regionBehaviors.AddIfMissing<SyncRegionContextWithHostBehavior>(SyncRegionContextWithHostBehavior.BehaviorKey);
             regionBehaviors.AddIfMissing<RegionManagerRegistrationBehavior>(RegionManagerRegistrationBehavior.BehaviorKey);
@@ -64,10 +59,12 @@ namespace Prism
 
         internal static void RegisterDefaultRegionAdapterMappings(this RegionAdapterMappings regionAdapterMappings)
         {
+#if !AVALONIA
             regionAdapterMappings.RegisterMapping<Selector, SelectorRegionAdapter>();
+#endif
             regionAdapterMappings.RegisterMapping<ItemsControl, ItemsControlRegionAdapter>();
             regionAdapterMappings.RegisterMapping<ContentControl, ContentControlRegionAdapter>();
-#if HAS_WINUI
+#if UNO_WINUI
             regionAdapterMappings.RegisterMapping<NavigationView, NavigationViewRegionAdapter>();
 #endif
         }
