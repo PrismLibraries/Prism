@@ -1,33 +1,40 @@
-﻿namespace Prism.Mvvm;
+﻿using Prism.Navigation;
+
+namespace Prism.Mvvm;
 
 /// <summary>
-/// Defines the behavior that the <see cref="ViewModelLocator"/> should use.
+/// Defines how the ViewModelLocator should behave
 /// </summary>
 public enum ViewModelLocatorBehavior
 {
     /// <summary>
-    /// The ViewModel will be lazily loaded by the Page/Region Navigation Services
-    /// or the DialogService.
+    /// Resolves the ViewModel once the View is ready
     /// </summary>
     /// <remarks>
-    /// This is the default and recommended value for the ViewModelLocator. This will
-    /// allow the View to be fully initialized and ensure that the proper ViewModel is
-    /// resolved based on the route name.
+    /// This is the default behavior and is best for Views created by Prism Navigation.
     /// </remarks>
     Automatic,
 
     /// <summary>
-    /// This will disable Prism's automatic ViewModel Location
-    /// </summary>
-    Disabled,
-
-    /// <summary>
-    /// This is not recommended for most situations
+    /// Resolves the ViewModel once we have established the correct container scope
     /// </summary>
     /// <remarks>
-    /// This is likely to cause breaks in the Container Scoping. It is recommended that
-    /// you allow Prism Page/Region Navigation Services or the Dialog Service properly
-    /// resolve the ViewModel.
+    /// This is best for Views such as those created as a Child of a <see cref="TabbedPage"/>
+    /// where Prism Navigation will not be creating the View.
     /// </remarks>
-    Forced
+    WhenAvailable,
+
+    /// <summary>
+    /// Immediately triggers the ViewModel resolution.
+    /// </summary>
+    /// <remarks>
+    /// This is not compatible with Prism Navigation. You will be provided an unimplemented instance of the
+    /// <see cref="INavigationService"/> if you have a dependency on it.
+    /// </remarks>
+    ForceLoaded,
+
+    /// <summary>
+    /// Disables Prism from Resolving the ViewModel
+    /// </summary>
+    Disabled
 }

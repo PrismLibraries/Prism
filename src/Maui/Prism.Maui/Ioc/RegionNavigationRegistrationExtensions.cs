@@ -45,6 +45,8 @@ public static class RegionNavigationRegistrationExtensions
         if (viewModelType is not null)
             containerRegistry.Register(viewModelType);
 
+        ViewModelLocationProvider.Register(viewType.ToString(), viewModelType);
+
         containerRegistry.Register(viewType)
             .RegisterInstance(new ViewRegistration
             {
@@ -89,6 +91,8 @@ public static class RegionNavigationRegistrationExtensions
 
         if (viewModelType is not null)
             services.AddTransient(viewModelType);
+
+        ViewModelLocationProvider.Register(viewType.ToString(), viewModelType);
 
         services.AddTransient(viewType)
             .AddSingleton(new ViewRegistration

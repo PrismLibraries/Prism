@@ -126,20 +126,22 @@ public sealed class PrismAppBuilder
         ViewModelLocationProvider.SetDefaultViewModelFactory(DefaultViewModelLocator);
     }
 
-    internal static object DefaultViewModelLocator(object view, Type viewModelType)
+    internal object DefaultViewModelLocator(object view, Type viewModelType)
     {
         try
         {
             if (view is not BindableObject bindable || bindable.BindingContext is not null)
                 return null;
 
-            var container = bindable.GetContainerProvider();
+            if (ViewModelLocator.GetAutowireViewModel(bindable) == ViewModelLocatorBehavior.ForceLoaded)
+            {
+                // Uses the Root Container
+                INavigationService flNavService = new ForceLoadedNavigationService();
+                return _container.Resolve(viewModelType, (typeof(INavigationService), flNavService));
+            }
 
-            return container.Resolve(viewModelType, (typeof(IDispatcher), bindable.Dispatcher));
-        }
-        catch (ViewModelCreationException)
-        {
-            throw;
+            var container = bindable.GetContainerProvider();
+            return container.Resolve(viewModelType);
         }
         catch (Exception ex)
         {
@@ -328,6 +330,7 @@ public sealed class PrismAppBuilder
         containerRegistry.RegisterPageBehavior<NavigationPage, NavigationPageActiveAwareBehavior>();
         containerRegistry.RegisterPageBehavior<NavigationPage, NavigationPageTabbedParentBehavior>();
         containerRegistry.RegisterPageBehavior<TabbedPage, TabbedPageActiveAwareBehavior>();
+        containerRegistry.RegisterPageBehavior<TabbedPage, ManualTabbedPageBehavior>();
         containerRegistry.RegisterPageBehavior<PageLifeCycleAwareBehavior>();
         containerRegistry.RegisterPageBehavior<PageScopeBehavior>();
         containerRegistry.RegisterPageBehavior<RegionCleanupBehavior>();
