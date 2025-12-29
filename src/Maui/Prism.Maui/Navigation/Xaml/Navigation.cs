@@ -11,7 +11,7 @@ public static class Navigation
 {
     internal const string PrismContainerProvider = nameof(PrismContainerProvider);
 
-    private static readonly BindableProperty NavigationScopeProperty =
+    internal static readonly BindableProperty NavigationScopeProperty =
         BindableProperty.CreateAttached(PrismContainerProvider,
             typeof(IContainerProvider),
             typeof(Navigation),
